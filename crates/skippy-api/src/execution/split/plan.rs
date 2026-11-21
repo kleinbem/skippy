@@ -140,6 +140,7 @@ impl SplitOptions {
             ctx_size: options.ctx_size,
             lane_count: options.generation_concurrency as u32,
             selected_device: options.selected_device.clone(),
+            max_request_tier: None,
             package_ref: identity.package_ref.clone(),
             manifest_sha256: identity.manifest_sha256.clone(),
             model_path: Some(identity.source_model_path.to_string_lossy().into_owned()),

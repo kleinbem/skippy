@@ -262,6 +262,7 @@ impl KvStageIntegration {
                 units: resident_candidate_units(candidate),
                 recompute_cost: candidate.value.recompute_cost,
                 last_used: candidate.last_used,
+                retention_priority: candidate.value.retention_priority,
             })
             .collect::<Vec<_>>();
         rank_eviction_candidates(&mut ranked);
@@ -486,9 +487,11 @@ impl KvStageIntegration {
         let mut evicted_entries = 0usize;
         let mut evicted_tokens = 0u64;
         while evicted_tokens < target_tokens {
-            let Some(removed) = evict_one_resident(&mut radix, &mut sequences, |victim| {
-                self.release_native_prefix(runtime, session_id, victim)
-            })?
+            // Live requests need the KV now, whichever tier stored it.
+            let Some(removed) =
+                evict_one_resident(&mut radix, &mut sequences, u64::MAX, |victim| {
+                    self.release_native_prefix(runtime, session_id, victim)
+                })?
             else {
                 break;
             };
@@ -578,12 +581,16 @@ impl KvStageIntegration {
     }
 }
 
+/// Evict the best resident victim whose retention is at most
+/// `max_victim_retention`, so a record never displaces a higher tier's entry.
 fn evict_one_resident(
     radix: &mut skippy_cache::UnifiedRadixCache<RadixResidentEntry, super::RadixExactEntry>,
     sequences: &mut ResidentSequencePool,
+    max_victim_retention: u64,
     mut drop_native: impl FnMut(&skippy_cache::RadixEvictionCandidate<RadixResidentEntry>) -> Result<()>,
 ) -> Result<Option<skippy_cache::RadixEviction<RadixResidentEntry>>> {
-    let candidates = radix.resident_eviction_candidates();
+    let mut candidates = radix.resident_eviction_candidates();
+    candidates.retain(|candidate| candidate.value.retention_priority <= max_victim_retention);
     if candidates.is_empty() {
         return Ok(None);
     }
@@ -603,6 +610,7 @@ fn evict_one_resident(
                     units: resident_candidate_units(candidate),
                     recompute_cost: candidate.value.recompute_cost,
                     last_used: candidate.last_used,
+                    retention_priority: candidate.value.retention_priority,
                 })
                 .collect(),
         },
@@ -765,6 +773,7 @@ mod proactive_eviction_tests {
                     seq_id,
                     token_count: 8,
                     recompute_cost: 8,
+                    retention_priority: 0,
                 },
             )
             .unwrap();
@@ -841,6 +850,7 @@ mod proactive_eviction_tests {
                         seq_id,
                         token_count: tokens,
                         recompute_cost: tokens,
+                        retention_priority: 0,
                     },
                 )
                 .unwrap();
@@ -886,11 +896,12 @@ mod proactive_eviction_tests {
                     seq_id,
                     token_count: 3,
                     recompute_cost: 3,
+                    retention_priority: 0,
                 },
             )
             .unwrap();
 
-        let error = evict_one_resident(&mut radix, &mut sequences, |_| {
+        let error = evict_one_resident(&mut radix, &mut sequences, u64::MAX, |_| {
             anyhow::bail!("native drop failed")
         })
         .unwrap_err();
@@ -915,13 +926,14 @@ mod proactive_eviction_tests {
                     seq_id,
                     token_count: 3,
                     recompute_cost: 3,
+                    retention_priority: 0,
                 },
             )
             .unwrap();
         radix.acquire_resident("stage", &[1, 2, 3]).unwrap();
         let mut dropped = false;
 
-        let removed = evict_one_resident(&mut radix, &mut sequences, |_| {
+        let removed = evict_one_resident(&mut radix, &mut sequences, u64::MAX, |_| {
             dropped = true;
             Ok(())
         })
@@ -947,12 +959,13 @@ mod proactive_eviction_tests {
                     seq_id,
                     token_count: 0,
                     recompute_cost: 0,
+                    retention_priority: 0,
                 },
             )
             .unwrap();
         let mut dropped = None;
 
-        let removed = evict_one_resident(&mut radix, &mut sequences, |victim| {
+        let removed = evict_one_resident(&mut radix, &mut sequences, u64::MAX, |victim| {
             let seq_id = victim.value.seq_id;
             dropped = Some(seq_id);
             Ok(())
@@ -981,6 +994,7 @@ mod proactive_eviction_tests {
                     seq_id: 1,
                     token_count: 3,
                     recompute_cost: 3,
+                    retention_priority: 0,
                 },
             )
             .unwrap();
@@ -1021,6 +1035,7 @@ mod proactive_eviction_tests {
                     seq_id: expensive_seq_id,
                     token_count: 3,
                     recompute_cost: 300,
+                    retention_priority: 0,
                 },
             )
             .unwrap();
@@ -1035,12 +1050,13 @@ mod proactive_eviction_tests {
                     seq_id: cheap_seq_id,
                     token_count: 3,
                     recompute_cost: 3,
+                    retention_priority: 0,
                 },
             )
             .unwrap();
         let mut dropped = None;
 
-        let removed = evict_one_resident(&mut radix, &mut sequences, |victim| {
+        let removed = evict_one_resident(&mut radix, &mut sequences, u64::MAX, |victim| {
             let seq_id = victim.value.seq_id;
             dropped = Some(seq_id);
             Ok(())
@@ -1071,6 +1087,7 @@ mod proactive_eviction_tests {
                 seq_id,
                 token_count: 0,
                 recompute_cost: 0,
+                retention_priority: 0,
             },
             |seq_id| {
                 dropped = Some(seq_id);
@@ -1105,6 +1122,7 @@ mod proactive_eviction_tests {
                 seq_id,
                 token_count: 0,
                 recompute_cost: 0,
+                retention_priority: 0,
             },
             |_| anyhow::bail!("native drop failed"),
         )
@@ -1147,6 +1165,7 @@ mod proactive_eviction_tests {
                     seq_id: existing_seq_id,
                     token_count: 3,
                     recompute_cost: 3,
+                    retention_priority: 0,
                 },
             )
             .unwrap();
@@ -1164,6 +1183,7 @@ mod proactive_eviction_tests {
                 seq_id: duplicate_seq_id,
                 token_count: 3,
                 recompute_cost: 3,
+                retention_priority: 0,
             },
             |seq_id| {
                 dropped = Some(seq_id);

@@ -9,7 +9,7 @@ pub mod clef;
 mod config;
 pub mod decision;
 mod devices;
-mod dflash;
+pub mod dflash;
 mod error;
 mod gguf_writer;
 mod kv_pages;
@@ -34,6 +34,7 @@ mod stage_planning;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 mod types;
+pub mod verification_batch;
 mod vocabulary;
 
 pub use activation::{

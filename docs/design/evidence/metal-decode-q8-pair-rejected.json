@@ -1,0 +1,219 @@
+{
+  "status": "REJECTED_NO_NATIVE_DECODE_GAIN",
+  "shipping": false,
+  "native_tree": "1993e8e1acf36403a0793ccf6a59e194df3726bb",
+  "source_overlay": "e1a77a93d61fd7fca7ef388f38703843ca7499f4",
+  "model_sha256": "707a55a8a4397ecde44de0c499d3e68c1ad1d240d1da65826b4949d1043f4450",
+  "build": {
+    "job": "job_7ft4nqzs2qz0d8w",
+    "run": "run_a8ks7g29e7b0dap",
+    "compiler_apple_build": 21000101
+  },
+  "native_pilot": {
+    "job": "job_66qwv9eg4ebffmn",
+    "run": "run_whb7ey3jx2r11ws",
+    "hardware": "Apple M5 Pro, 48 GB",
+    "warm_cycles": 3,
+    "measured_cycles": 3,
+    "audit": {
+      "status": "PASS_INDEPENDENT_NATIVE_PILOT_AUDIT",
+      "scope": "Direct native iteration API including session creation, prefill, 128 sampled output tokens, and session cleanup; no HTTP scheduler. One loaded engine, fusion flag switched between requests. Not pooled with serving TPS.",
+      "single_process": true,
+      "promotion_allowed": false,
+      "arms": [
+        {
+          "arm": 0,
+          "output_tokens": 6144,
+          "elapsed_s": 92.525442,
+          "tok_s": 66.40335746788435
+        },
+        {
+          "arm": 1,
+          "output_tokens": 6144,
+          "elapsed_s": 93.178344,
+          "tok_s": 65.93806818459878
+        }
+      ],
+      "percent": -0.7007014419573632,
+      "cycle_percent": [
+        -0.2527628123523362,
+        -0.9120764881837218,
+        -0.9387571417630136
+      ],
+      "all_tokens_exact": true,
+      "accepted_requests": 192,
+      "rejected_blocks": 2,
+      "raw_sha256": {
+        "summary.json": "d4d1b9fc47ad6266a58595a315af25fe113c1effa170762872a4712e120d8ca0",
+        "requests.jsonl": "ca9b1ba4d581b1abacf1ca6c09850580537894cdb5093de6b379619a750a3de2",
+        "blocks.json": "ddc8b1cad27d1860f7dde38cdcc3d5fe00988edf23d5b3610118b9d749811a70",
+        "load-thermal.json": "9f97dfa8074f9e10157f0e98b508ace372f3c475d096e26dfe1571f07de7a43b",
+        "native-libraries.txt": "413f5b9cab4c6cca9be23ee1701bd280ac8bf306b0fb20b3ee05f84a8d321be1"
+      }
+    }
+  },
+  "local_kernel_screen": {
+    "hardware": "Apple M5 Max",
+    "scope": "Local M5 Max original-weight two-projection GPU screen, not serving TPS",
+    "comparisons": [
+      {
+        "case": "shared_expert",
+        "cycles": [
+          {
+            "baseline_gpu_us": 32.0283975,
+            "pair_gpu_us": 22.238435000000003,
+            "latency_percent": -30.566507425168542
+          },
+          {
+            "baseline_gpu_us": 32.307494999999996,
+            "pair_gpu_us": 23.136589999999998,
+            "latency_percent": -28.386307883046946
+          },
+          {
+            "baseline_gpu_us": 32.16199,
+            "pair_gpu_us": 22.5855975,
+            "latency_percent": -29.77549741169624
+          }
+        ],
+        "all_outputs_exact": true,
+        "fused_counts": [
+          0,
+          200
+        ]
+      },
+      {
+        "case": "query_key",
+        "cycles": [
+          {
+            "baseline_gpu_us": 93.14155249999999,
+            "pair_gpu_us": 89.039865,
+            "latency_percent": -4.403713906314777
+          },
+          {
+            "baseline_gpu_us": 93.0754075,
+            "pair_gpu_us": 89.3183375,
+            "latency_percent": -4.036587215586462
+          },
+          {
+            "baseline_gpu_us": 93.0943025,
+            "pair_gpu_us": 89.1906425,
+            "latency_percent": -4.19323191126546
+          }
+        ],
+        "all_outputs_exact": true,
+        "fused_counts": [
+          0,
+          200
+        ]
+      },
+      {
+        "case": "qkv_gate",
+        "cycles": [
+          {
+            "baseline_gpu_us": 122.061365,
+            "pair_gpu_us": 121.03803500000001,
+            "latency_percent": -0.8383733870254373
+          },
+          {
+            "baseline_gpu_us": 122.20867,
+            "pair_gpu_us": 120.51271750000001,
+            "latency_percent": -1.387751376395796
+          },
+          {
+            "baseline_gpu_us": 121.97595749999999,
+            "pair_gpu_us": 120.4923325,
+            "latency_percent": -1.2163257664937643
+          }
+        ],
+        "all_outputs_exact": true,
+        "fused_counts": [
+          0,
+          200
+        ]
+      },
+      {
+        "case": "batch_fallback",
+        "cycles": [
+          {
+            "baseline_gpu_us": 38.2915675,
+            "pair_gpu_us": 37.977177499999996,
+            "latency_percent": -0.8210423874655981
+          },
+          {
+            "baseline_gpu_us": 38.024195,
+            "pair_gpu_us": 37.93999,
+            "latency_percent": -0.22145110501352594
+          },
+          {
+            "baseline_gpu_us": 38.211865,
+            "pair_gpu_us": 37.9622875,
+            "latency_percent": -0.6531413737591696
+          }
+        ],
+        "all_outputs_exact": true,
+        "fused_counts": [
+          0
+        ]
+      },
+      {
+        "case": "input_fallback",
+        "cycles": [
+          {
+            "baseline_gpu_us": 32.0164475,
+            "pair_gpu_us": 31.9767675,
+            "latency_percent": -0.12393629867897271
+          },
+          {
+            "baseline_gpu_us": 32.453835,
+            "pair_gpu_us": 32.01875,
+            "latency_percent": -1.340627386563098
+          },
+          {
+            "baseline_gpu_us": 32.026585,
+            "pair_gpu_us": 32.047920000000005,
+            "latency_percent": 0.06661653123494204
+          }
+        ],
+        "all_outputs_exact": true,
+        "fused_counts": [
+          0
+        ]
+      },
+      {
+        "case": "output_alias",
+        "cycles": [
+          {
+            "baseline_gpu_us": 31.747704999999996,
+            "pair_gpu_us": 31.3800125,
+            "latency_percent": -1.1581703307372848
+          },
+          {
+            "baseline_gpu_us": 31.49678,
+            "pair_gpu_us": 31.487277499999998,
+            "latency_percent": -0.030169750685637986
+          },
+          {
+            "baseline_gpu_us": 31.549575,
+            "pair_gpu_us": 31.4170675,
+            "latency_percent": -0.41999773372540794
+          }
+        ],
+        "all_outputs_exact": true,
+        "fused_counts": [
+          0
+        ]
+      }
+    ]
+  },
+  "local_state_diagnostic": {
+    "status": "PASS_FULL_MODEL_FA_AUTO_PAIR_STATE_DIAGNOSTIC",
+    "scope": "Local M5 Max retained ABI .85 libllama plus private pair ggml libraries; flash attention auto, context8192, batch2048, microbatch512, threads4; numerical/state diagnostic, not packaged serving TPS",
+    "state_blocks_exact": 4,
+    "pair_pipeline_compiled": true,
+    "control_log_sha256": "a11a3c6ffd80309976dfb4ad56e4b3126674ff9fd6c17c21ac863476aeed1561",
+    "candidate_log_sha256": "a156267e003a3dd9d72a59edff725fe28e54774316c8b6dfb8391e7b5989acff",
+    "state_bytes": 264770512,
+    "state_sha256": "dc6ec0977fdeded86cdb0c6163ef4a71a4c723b82cd03eaaeeeaa669170f2f79"
+  },
+  "disposition": "Do not promote. Byte-exact kernel and model-state results did not translate into a native C1 throughput benefit. This pilot is not HTTP serving TPS or attribution of the confirmed main-to-PR gain."
+}

@@ -6,6 +6,9 @@ license.workspace = true
 publish = false
 version.workspace = true
 
+[features]
+dynamic-native-runtime = ["skippy-runtime/dynamic-native-runtime", "skippy-runtime/test-support"]
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true

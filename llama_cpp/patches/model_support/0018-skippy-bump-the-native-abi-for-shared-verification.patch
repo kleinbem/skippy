@@ -1,0 +1,25 @@
+From 1b799a72559635f065facdc79aecc8139223ad09 Mon Sep 17 00:00:00 2001
+From: James Dumay <jameswdumay@gmail.com>
+Date: Sat, 21 Nov 2026 10:36:21 +1100
+Subject: [PATCH] skippy: bump the native ABI for shared verification
+
+---
+ include/skippy/common.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/skippy/common.h b/include/skippy/common.h
+index e06e491d546c2d8497d49092cdee347f1d9cbd39..ee9bb3f1f928885d3256ebcb2a6fe4b46fdbb386 100644
+--- a/include/skippy/common.h
++++ b/include/skippy/common.h
+@@ -46,7 +46,7 @@ extern "C" {
+ 
+ #define SKIPPY_ABI_VERSION_MAJOR 0
+ #define SKIPPY_ABI_VERSION_MINOR 1
+-#define SKIPPY_ABI_VERSION_PATCH 87
++#define SKIPPY_ABI_VERSION_PATCH 88
+ 
+ #if defined(_MSC_VER)
+ #define SKIPPY_DEPRECATED(message) __declspec(deprecated(message))
+-- 
+2.56.0
+

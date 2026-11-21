@@ -182,6 +182,23 @@ perform exact string matching on requests. Resolution to a concrete Hugging Face
 revision, GGUF file, split-shard distribution, local runtime, or staged binary
 chain remains backend-owned.
 
+## Request Tiers
+
+Every request carries an `InferenceRequestClass` with a tier (`local`,
+`trusted` or `mesh`, highest first) and a private cache partition flag.
+The public standalone router uses the default local class. An embedding
+host behind a trusted upstream can enable
+`InferenceFrontendConfig::with_trusted_request_class_headers` to read
+`x-skippy-request-tier` and `x-skippy-cache-partition`. The upstream must
+strip client-supplied values and stamp its own classification. The router
+sets the class on `InferenceRequestContext`. Embedding hosts that call a
+backend directly set it on the context. A backend reads the class from the context and stamps it on the
+`GenerationRequest` (`request_class`) for its hooks; request bodies never set
+it. `InferenceRequestClass::cache_namespace` turns the class into the cache
+namespace prefix (`tier:<partition>:`) that keeps each tier's, and each side
+of the private line's, cached prefixes apart; a `local`, non-private request
+keeps the plain namespace.
+
 ## Backend Responsibility Matrix
 
 | Area | Frontend responsibility | Backend responsibility | Status |

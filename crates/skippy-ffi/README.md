@@ -105,10 +105,13 @@ same Rust crate.
 
 ## ABI Contract
 
-The staged ABI is versioned as `0.1.87`. The patch header in
+The staged ABI is versioned as `0.1.88`. The patch header in
 `llama_cpp/patches/` and the Rust constants in
 `crates/skippy-ffi/src/lib.rs` are the source of truth, so keep this README
 aligned with those files instead of treating it as canonical prose.
+
+ABI `0.1.88` adds `skippy_verify_batch_sampled` and its request descriptor for
+shared target verification.
 
 ABI `0.1.87` removes the callback-backed checkpoint loader. The staged
 model loaders accept GGUF files and GGUF package parts.

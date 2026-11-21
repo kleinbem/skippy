@@ -185,6 +185,7 @@ pub struct InferenceFrontendConfig {
     /// Header accepted as stable agent-session identity from the endpoint's
     /// trusted immediate upstream. `None` disables header-derived identity.
     pub agent_session_header: Option<HeaderName>,
+    trust_request_class_headers: bool,
     pub(crate) lifecycle_observer: Option<Arc<dyn InferenceLifecycleObserver>>,
     pub http_exchange_policy: Option<Arc<dyn crate::http_exchange::HttpExchangePolicy>>,
 }
@@ -196,6 +197,10 @@ impl std::fmt::Debug for InferenceFrontendConfig {
             .field("max_request_body_bytes", &self.max_request_body_bytes)
             .field("backend_timeout", &self.backend_timeout)
             .field("agent_session_header", &self.agent_session_header)
+            .field(
+                "trust_request_class_headers",
+                &self.trust_request_class_headers,
+            )
             .field("has_lifecycle_observer", &self.lifecycle_observer.is_some())
             .field(
                 "has_http_exchange_policy",
@@ -236,6 +241,13 @@ impl InferenceFrontendConfig {
         self
     }
 
+    /// Accept request tier and cache partition headers from a trusted immediate upstream.
+    /// The upstream must strip client-supplied values and stamp its own classification.
+    pub fn with_trusted_request_class_headers(mut self) -> Self {
+        self.trust_request_class_headers = true;
+        self
+    }
+
     /// Observe metadata-only lifecycle boundaries for frontend ingress.
     pub fn with_lifecycle_observer(
         mut self,
@@ -261,6 +273,7 @@ impl Default for InferenceFrontendConfig {
             backend_timeout: configured_backend_timeout()
                 .unwrap_or(Some(Self::DEFAULT_BACKEND_TIMEOUT)),
             agent_session_header: configured_agent_session_header(),
+            trust_request_class_headers: false,
             lifecycle_observer: None,
             http_exchange_policy: None,
         }
@@ -382,6 +395,7 @@ async fn models(
 async fn system_one(
     State(state): State<FrontendState>,
     Extension(context): Extension<InferenceLifecycleContext>,
+    headers: HeaderMap,
     payload: Result<Json<SystemOneRequest>, JsonRejection>,
 ) -> Result<Json<SystemOneResponse>, InferenceError> {
     let Json(request) = json_payload(payload)?;
@@ -391,7 +405,9 @@ async fn system_one(
         InferenceBackendOperation::SystemOne,
         "system_one",
         state.config.backend_timeout,
-        state.backend.system_one(request),
+        state
+            .backend
+            .system_one_with_context(request, plain_request_context(context.request_id, &headers)),
     )
     .await?;
     state.response_completed(
@@ -405,6 +421,7 @@ async fn system_one(
 async fn decisions(
     State(state): State<FrontendState>,
     Extension(context): Extension<InferenceLifecycleContext>,
+    headers: HeaderMap,
     payload: Result<Json<DecisionsRequest>, JsonRejection>,
 ) -> Result<Json<DecisionsResponse>, InferenceError> {
     let Json(request) = json_payload(payload)?;
@@ -414,7 +431,10 @@ async fn decisions(
         InferenceBackendOperation::SystemOne,
         "decisions",
         state.config.backend_timeout,
-        state.backend.system_one(request.to_system_one()?),
+        state.backend.system_one_with_context(
+            request.to_system_one()?,
+            plain_request_context(context.request_id, &headers),
+        ),
     )
     .await?;
     let usage = response.usage;
@@ -431,11 +451,12 @@ async fn decisions(
 async fn embeddings(
     State(state): State<FrontendState>,
     Extension(context): Extension<InferenceLifecycleContext>,
+    headers: HeaderMap,
     payload: Result<Json<EmbeddingsRequest>, JsonRejection>,
 ) -> Result<Response, InferenceError> {
     let Json(request) = json_payload(payload)?;
     request.validate()?;
-    let backend_context = InferenceRequestContext::with_request_id(context.request_id);
+    let backend_context = plain_request_context(context.request_id, &headers);
     let response: EmbeddingResponse = call_backend_with_context(
         state.config.lifecycle_observer.clone(),
         &context,
@@ -459,11 +480,12 @@ async fn embeddings(
 async fn rerank(
     State(state): State<FrontendState>,
     Extension(context): Extension<InferenceLifecycleContext>,
+    headers: HeaderMap,
     payload: Result<Json<RerankRequest>, JsonRejection>,
 ) -> Result<Response, InferenceError> {
     let Json(request) = json_payload(payload)?;
     request.validate()?;
-    let backend_context = InferenceRequestContext::with_request_id(context.request_id);
+    let backend_context = plain_request_context(context.request_id, &headers);
     let response: RerankResponse = call_backend_with_context(
         state.config.lifecycle_observer.clone(),
         &context,
@@ -483,11 +505,12 @@ async fn rerank(
 async fn audio_speech(
     State(state): State<FrontendState>,
     Extension(context): Extension<InferenceLifecycleContext>,
+    headers: HeaderMap,
     payload: Result<Json<AudioSpeechRequest>, JsonRejection>,
 ) -> Result<Response, InferenceError> {
     let Json(request) = json_payload(payload)?;
     request.validate()?;
-    let backend_context = InferenceRequestContext::with_request_id(context.request_id);
+    let backend_context = plain_request_context(context.request_id, &headers);
     let response = call_backend_with_context(
         state.config.lifecycle_observer.clone(),
         &context,
@@ -516,18 +539,34 @@ fn audio_response(audio: AudioResponse) -> Result<Response, InferenceError> {
 async fn audio_transcriptions(
     State(state): State<FrontendState>,
     Extension(context): Extension<InferenceLifecycleContext>,
+    headers: HeaderMap,
     multipart: Result<Multipart, MultipartRejection>,
 ) -> Result<Response, InferenceError> {
-    audio_text_request(state, context, multipart_payload(multipart)?, false).await
+    audio_text_request(
+        state,
+        context,
+        &headers,
+        multipart_payload(multipart)?,
+        false,
+    )
+    .await
 }
 
 /// Select English translation without changing the multipart upload contract.
 async fn audio_translations(
     State(state): State<FrontendState>,
     Extension(context): Extension<InferenceLifecycleContext>,
+    headers: HeaderMap,
     multipart: Result<Multipart, MultipartRejection>,
 ) -> Result<Response, InferenceError> {
-    audio_text_request(state, context, multipart_payload(multipart)?, true).await
+    audio_text_request(
+        state,
+        context,
+        &headers,
+        multipart_payload(multipart)?,
+        true,
+    )
+    .await
 }
 
 /// Convert extractor rejection into the frontend's structured invalid-request error.
@@ -552,13 +591,14 @@ fn multipart_error(error: MultipartError, field: &str) -> InferenceError {
 async fn audio_text_request(
     state: FrontendState,
     context: InferenceLifecycleContext,
+    headers: &HeaderMap,
     multipart: Multipart,
     translate: bool,
 ) -> Result<Response, InferenceError> {
     let request = parse_audio_multipart(multipart).await?;
     request.validate()?;
     let response_format = request.response_format.clone();
-    let backend_context = InferenceRequestContext::with_request_id(context.request_id);
+    let backend_context = plain_request_context(context.request_id, headers);
     let operation = if translate {
         InferenceBackendOperation::AudioTranslation
     } else {
@@ -630,13 +670,15 @@ async fn completions(
     payload: Result<Json<CompletionRequest>, JsonRejection>,
 ) -> Result<Response, InferenceError> {
     let Json(mut request) = json_payload(payload)?;
+    let class = crate::InferenceRequestClass::from_headers(&headers);
     let header_session = agent_session_from_header(&state.config, &headers)?;
     let trusted_agent_session = header_session.is_some();
     request.set_agent_session(header_session);
     request.validate()?;
     if request.stream {
         let include_usage = request.include_usage();
-        let backend_context = request_context(context.request_id, trusted_agent_session, true);
+        let backend_context =
+            request_context(context.request_id, class, trusted_agent_session, true);
         let cancellation = backend_context.cancellation_token();
         let stream = call_backend_with_context(
             state.config.lifecycle_observer.clone(),
@@ -680,7 +722,8 @@ async fn completions(
             }));
         Ok(sse_response(events, cancellation, lifecycle))
     } else {
-        let backend_context = request_context(context.request_id, trusted_agent_session, false);
+        let backend_context =
+            request_context(context.request_id, class, trusted_agent_session, false);
         let response = call_backend_with_context(
             state.config.lifecycle_observer.clone(),
             &context,
@@ -787,12 +830,24 @@ fn resolve_agent_session(
     }
 }
 
+/// A backend context for routes without agent sessions or stream usage,
+/// carrying the tier and cache partition the front end stamped on it.
+pub(crate) fn plain_request_context(
+    request_id: RequestId,
+    headers: &HeaderMap,
+) -> InferenceRequestContext {
+    InferenceRequestContext::with_request_id(request_id)
+        .with_request_class(crate::InferenceRequestClass::from_headers(headers))
+}
+
 pub(crate) fn request_context(
     request_id: RequestId,
+    class: crate::InferenceRequestClass,
     trusted_agent_session: bool,
     observe_stream_usage: bool,
 ) -> InferenceRequestContext {
-    let mut context = InferenceRequestContext::with_request_id(request_id);
+    let mut context =
+        InferenceRequestContext::with_request_id(request_id).with_request_class(class);
     if trusted_agent_session {
         context = context.with_trusted_agent_session();
     }
@@ -860,6 +915,10 @@ async fn frontend_lifecycle_middleware(
     mut request: Request<Body>,
     next: Next,
 ) -> Response {
+    if !state.config.trust_request_class_headers {
+        request.headers_mut().remove(crate::REQUEST_TIER_HEADER);
+        request.headers_mut().remove(crate::CACHE_PARTITION_HEADER);
+    }
     let (nonce_value, nonce_origin) = apply_client_nonce_headers(&mut request);
     let request_id = request_id_from_headers_or_generate(request.headers());
     let method = request.method().clone();

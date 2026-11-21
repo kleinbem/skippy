@@ -58,6 +58,7 @@ fn prefill_keeps_a_healthy_resident_cache() -> Result<()> {
             seq_id,
             token_count: 64,
             recompute_cost: 64,
+            retention_priority: skippy_inference_api::InferenceRequestTier::Local.priority(),
         },
     )?;
     let mut runtime =

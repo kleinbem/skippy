@@ -1,0 +1,199 @@
+{
+  "scope": "Unpromoted cache pilots and isolated convolution attribution; no combined headline or completed fresh-process cache confirmation",
+  "audits": {
+    "plain_cache": {
+      "sha256": "63ee8fb663cd677d027d027d2fd668ad45e6cc4b3b1148a8fc1c7ad2a7201be5",
+      "result": {
+        "status": "PASS_ARTIFACT_AUDIT",
+        "single_campaign": true,
+        "promotion_allowed": false,
+        "accepted_requests": 288,
+        "rejected_blocks": 10,
+        "comparisons": [
+          {
+            "concurrency": 1,
+            "arms": [
+              {
+                "arm": "old",
+                "output_tokens": 6144,
+                "elapsed_s": 61.89362099976279,
+                "tok_s": 99.26709571610857
+              },
+              {
+                "arm": "new",
+                "output_tokens": 6144,
+                "elapsed_s": 60.26691000000574,
+                "tok_s": 101.94649103462274
+              }
+            ],
+            "percent": 2.699177707562739,
+            "cycle_percent": [
+              2.3255374312258548,
+              2.8806697282916183,
+              2.8931661371142114
+            ],
+            "all_text_exact": true
+          },
+          {
+            "concurrency": 2,
+            "arms": [
+              {
+                "arm": "old",
+                "output_tokens": 6144,
+                "elapsed_s": 37.847813999745995,
+                "tok_s": 162.33434248121262
+              },
+              {
+                "arm": "new",
+                "output_tokens": 6144,
+                "elapsed_s": 37.6024070000276,
+                "tok_s": 163.39379550876865
+              }
+            ],
+            "percent": 0.6526364115951866,
+            "cycle_percent": [
+              0.6399634619995709,
+              0.7034544790244901,
+              0.6144758382015558
+            ],
+            "all_text_exact": true
+          }
+        ]
+      }
+    },
+    "m4_cache": {
+      "sha256": "c59119ec36a03e44c810e8d6fd5f2fd2e2b434f3c47e038fd7442e1671fd2b7c",
+      "result": {
+        "status": "PASS_LOCAL_M4_ARTIFACT_AUDIT",
+        "node": "macmini-764jw9",
+        "run": "run_vv2132wyp91m1d9",
+        "exact_values": 54016,
+        "loaded_libraries": 5,
+        "log_sha256": "c64361aadf0b5ab9123f843579e529beba7e9b138871bddb6aca2e60f21e4dea",
+        "scope": "No serving or model-performance claim"
+      }
+    },
+    "convolution": {
+      "sha256": "718169f7d4624626d5d0b0734e8ad96900e3988aa6237ac02bb9646459a68829",
+      "result": {
+        "status": "PASS_ARTIFACT_AUDIT",
+        "single_campaign": true,
+        "promotion_allowed": false,
+        "accepted_requests": 288,
+        "rejected_blocks": 35,
+        "comparisons": [
+          {
+            "concurrency": 1,
+            "arms": [
+              {
+                "arm": "old",
+                "output_tokens": 6144,
+                "elapsed_s": 90.07924199919216,
+                "tok_s": 68.20661301807024
+              },
+              {
+                "arm": "new",
+                "output_tokens": 6144,
+                "elapsed_s": 89.31418099999428,
+                "tok_s": 68.79086760030184
+              }
+            ],
+            "percent": 0.8565952132483234,
+            "cycle_percent": [
+              0.2932773213457418,
+              1.1687358834778339,
+              1.1071130843452126
+            ],
+            "all_text_exact": true
+          },
+          {
+            "concurrency": 2,
+            "arms": [
+              {
+                "arm": "old",
+                "output_tokens": 6144,
+                "elapsed_s": 60.66625300026499,
+                "tok_s": 101.27541583906894
+              },
+              {
+                "arm": "new",
+                "output_tokens": 6144,
+                "elapsed_s": 60.263106000144035,
+                "tok_s": 101.95292622297488
+              }
+            ],
+            "percent": 0.6689781308649723,
+            "cycle_percent": [
+              1.2715795593551515,
+              1.0635018380220407,
+              -0.319068961014779
+            ],
+            "all_text_exact": true
+          }
+        ]
+      }
+    },
+    "production_dflash_cache": {
+      "job": "job_t2yjbkrj1fthjzs",
+      "run": "run_174vdj1s14bh7cn",
+      "sha256": "958042733b29acf4cf0095bf7a686738e50c46cb148f2be797913d8fe4290c71",
+      "result": {
+        "status": "PASS_ARTIFACT_AUDIT",
+        "single_campaign": true,
+        "promotion_allowed": false,
+        "accepted_requests": 288,
+        "rejected_blocks": 6,
+        "comparisons": [
+          {
+            "concurrency": 1,
+            "arms": [
+              {
+                "arm": "old",
+                "output_tokens": 6144,
+                "elapsed_s": 37.19015800044872,
+                "tok_s": 165.2049985893007
+              },
+              {
+                "arm": "new",
+                "output_tokens": 6144,
+                "elapsed_s": 37.162603000877425,
+                "tok_s": 165.32749333664646
+              }
+            ],
+            "percent": 0.07414711927107298,
+            "cycle_percent": [
+              0.20850642632082028,
+              0.1968110758600261,
+              -0.183617813577297
+            ],
+            "all_text_exact": true
+          },
+          {
+            "concurrency": 2,
+            "arms": [
+              {
+                "arm": "old",
+                "output_tokens": 6144,
+                "elapsed_s": 29.731798999477178,
+                "tok_s": 206.6474349603951
+              },
+              {
+                "arm": "new",
+                "output_tokens": 6144,
+                "elapsed_s": 29.800968999043107,
+                "tok_s": 206.1677927384603
+              }
+            ],
+            "percent": -0.2321065451534543,
+            "cycle_percent": [
+              -0.35791206749599125,
+              0.1756335748524407,
+              -0.5144040563941688
+            ],
+            "all_text_exact": true
+          }
+        ]
+      }
+    }
+  }
+}

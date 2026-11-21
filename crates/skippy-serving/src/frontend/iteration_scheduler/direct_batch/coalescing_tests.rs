@@ -9,6 +9,9 @@ fn worker(commands: std_mpsc::Receiver<SchedulerCommand>) -> SchedulerWorker {
         scheduler: Scheduler::new(build_scheduler_config(4, 64, 0, Some(8), Some(8), 8, false)),
         requests: BTreeMap::new(),
         direct_iterations: VecDeque::new(),
+        verifications: VecDeque::new(),
+        drafts: VecDeque::new(),
+        max_verify_iteration_tokens: 512,
         cache_runtime_queue: CacheRuntimeQueue::new(CACHE_AGING_COST_PER_TURN, true),
         commands,
         kv_capacity_tokens: 64,
@@ -77,6 +80,7 @@ fn planned_work_reaches_runtime_admission_without_coalescing_an_empty_direct_que
     let (reply, events) = std_mpsc::channel();
     worker.submit(ScheduledRequest {
         id: "planned".into(),
+        priority: 0,
         prompt_tokens: vec![1, 2],
         max_tokens: 1,
         sampling: None,

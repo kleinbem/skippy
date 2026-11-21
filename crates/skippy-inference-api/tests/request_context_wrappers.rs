@@ -102,3 +102,45 @@ async fn backend_wrapper_stack_preserves_authoritative_request_context() {
     assert_eq!(contexts[1].request_id(), Some(stream_id));
     assert!(contexts[1].observes_stream_usage());
 }
+
+#[tokio::test]
+async fn only_a_trusted_http_frontend_accepts_request_class_headers() {
+    use axum::{body::Body, http::Request};
+    use skippy_inference_api::{
+        CACHE_PARTITION_HEADER, InferenceFrontendConfig, InferenceRequestClass,
+        InferenceRequestTier, REQUEST_TIER_HEADER, router_with_config,
+    };
+    use tower::ServiceExt;
+
+    let capture = Arc::new(ContextCaptureBackend::default());
+    for config in [
+        InferenceFrontendConfig::default(),
+        InferenceFrontendConfig::default().with_trusted_request_class_headers(),
+    ] {
+        let response = router_with_config(capture.clone(), config)
+            .oneshot(
+                Request::post("/v1/chat/completions")
+                    .header("content-type", "application/json")
+                    .header(REQUEST_TIER_HEADER, "trusted")
+                    .header(CACHE_PARTITION_HEADER, "private")
+                    .body(Body::from(
+                        r#"{"model":"context-model","messages":[{"role":"user","content":"test"}]}"#,
+                    ))
+                    .expect("request fixture"),
+            )
+            .await
+            .expect("HTTP response");
+        assert!(response.status().is_success());
+    }
+
+    let contexts = capture.contexts.lock().expect("context lock");
+    assert_eq!(contexts.len(), 2);
+    assert_eq!(
+        contexts[0].request_class(),
+        InferenceRequestClass::default()
+    );
+    assert_eq!(
+        contexts[1].request_class(),
+        InferenceRequestClass::new(InferenceRequestTier::Trusted, true),
+    );
+}

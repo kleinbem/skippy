@@ -18,6 +18,7 @@ use skippy_runtime::{
 };
 
 mod context_capacity;
+pub(crate) mod draft_batch;
 mod expert_placement;
 mod frame_operations;
 pub(crate) use frame_operations::slice_activation_frame;
@@ -30,6 +31,8 @@ mod resident_prefix;
 mod restore_transaction;
 mod session_end_exports;
 mod state_transfer;
+mod verification_batch;
+pub(crate) use verification_batch::RuntimeVerificationRequest;
 
 #[cfg(test)]
 use context_capacity::lane_count_for_workload;
@@ -433,10 +436,9 @@ fn runtime_from_verified_model(
     config: &StageConfig,
     model: StageModel,
     observer: Option<Arc<dyn SessionLifecycleObserver>>,
-    content: Option<model_content::VerifiedModelContent>,
+    content: Option<Arc<model_content::VerifiedModelContent>>,
 ) -> Result<Arc<Mutex<RuntimeState>>> {
     // Verification and its post-open file checks finished outside this lock.
-    let content = content.map(Arc::new);
     let runtime = runtime_from_loaded_model(config, model, observer)?;
     panic_recovery::lock_runtime(&runtime).verified_model_content = content;
     Ok(runtime)

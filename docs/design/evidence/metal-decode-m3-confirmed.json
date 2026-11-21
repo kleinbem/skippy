@@ -1,0 +1,113 @@
+{
+  "scope": "Matched original models on M3 Ultra; three fresh-process campaigns, each with three measured cycles and exact text, artifacts locally re-audited.",
+  "comparisons": {
+    "plain": [
+      {
+        "concurrency": 1,
+        "process_campaigns": 3,
+        "arms": [
+          {
+            "arm": "old",
+            "output_tokens": 18432,
+            "elapsed_s": 513.3963660004083,
+            "tok_s": 35.90208505680257
+          },
+          {
+            "arm": "new",
+            "output_tokens": 18432,
+            "elapsed_s": 186.2137089986354,
+            "tok_s": 98.98304533601804
+          }
+        ],
+        "pooled_percent": 175.7027765362702,
+        "process_percent": [
+          177.08642602147387,
+          175.97061472205073,
+          174.0618314449079
+        ],
+        "all_text_exact": true
+      },
+      {
+        "concurrency": 2,
+        "process_campaigns": 3,
+        "arms": [
+          {
+            "arm": "old",
+            "output_tokens": 18432,
+            "elapsed_s": 293.94392499886453,
+            "tok_s": 62.705837516700505
+          },
+          {
+            "arm": "new",
+            "output_tokens": 18432,
+            "elapsed_s": 113.65917499898933,
+            "tok_s": 162.16904618711072
+          }
+        ],
+        "pooled_percent": 158.61873887565903,
+        "process_percent": [
+          159.1770134583843,
+          157.7523987313445,
+          158.9267281519163
+        ],
+        "all_text_exact": true
+      }
+    ],
+    "dflash": [
+      {
+        "concurrency": 1,
+        "process_campaigns": 3,
+        "arms": [
+          {
+            "arm": "old",
+            "output_tokens": 18432,
+            "elapsed_s": 112.63505700184032,
+            "tok_s": 163.6435448307967
+          },
+          {
+            "arm": "new",
+            "output_tokens": 18432,
+            "elapsed_s": 111.82934999954887,
+            "tok_s": 164.82256223499786
+          }
+        ],
+        "pooled_percent": 0.7204790176234654,
+        "process_percent": [
+          1.0956604869827302,
+          0.5208770005601382,
+          0.5472139729673975
+        ],
+        "all_text_exact": true
+      },
+      {
+        "concurrency": 2,
+        "process_campaigns": 3,
+        "arms": [
+          {
+            "arm": "old",
+            "output_tokens": 18432,
+            "elapsed_s": 118.70968200080097,
+            "tok_s": 155.26955922496393
+          },
+          {
+            "arm": "new",
+            "output_tokens": 18432,
+            "elapsed_s": 89.41049499786459,
+            "tok_s": 206.150295895803
+          }
+        ],
+        "pooled_percent": 32.769292915374336,
+        "process_percent": [
+          32.33871954776011,
+          33.09692781606921,
+          32.87261665997823
+        ],
+        "all_text_exact": true
+      }
+    ]
+  },
+  "vanilla_pending": true,
+  "cache_prototypes_excluded": true,
+  "source_main": "fbc3349cd406786e43f6579590c9a12b0cd49c05",
+  "source_pr_product": "ac040471f6104ea8fdfd6beafb345a6d3163ef92"
+}

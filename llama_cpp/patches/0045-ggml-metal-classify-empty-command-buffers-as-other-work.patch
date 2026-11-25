@@ -1,0 +1,54 @@
+From 0d2efa59759effb19fed87c31683783afb230959 Mon Sep 17 00:00:00 2001
+From: Skippy CI <ci@skippy.local>
+Date: Fri, 20 Nov 2026 08:08:56 +1100
+Subject: [PATCH] ggml-metal: classify empty command buffers as other work
+
+---
+ ggml/src/ggml-metal/ggml-metal-timing.cpp | 8 +++++++-
+ tests/test-skippy-tracing-metal.cpp       | 5 ++++-
+ 2 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/ggml/src/ggml-metal/ggml-metal-timing.cpp b/ggml/src/ggml-metal/ggml-metal-timing.cpp
+index 8bf274932..477058b20 100644
+--- a/ggml/src/ggml-metal/ggml-metal-timing.cpp
++++ b/ggml/src/ggml-metal/ggml-metal-timing.cpp
+@@ -314,11 +314,17 @@ void ggml_metal_timing_account(
+         int start,
+         int end,
+         bool split_by_class) {
+-    if (record == nullptr || gf == nullptr || start >= end) {
++    if (record == nullptr) {
+         return;
+     }
+     ggml_backend_command_timing & timing = record->timing;
+     timing.split_by_class = split_by_class ? 1 : 0;
++    // Metal may submit an empty trailing command buffer. It has no operation
++    // classes to mix; do not leave the unclassified COUNT sentinel in its event.
++    if (gf == nullptr || start >= end) {
++        timing.op_class = GGML_BACKEND_OP_CLASS_OTHER;
++        return;
++    }
+ 
+     ggml_tensor ** first = gf->nodes + start;
+     ggml_tensor ** last  = gf->nodes + std::min(end, gf->n_nodes);
+diff --git a/tests/test-skippy-tracing-metal.cpp b/tests/test-skippy-tracing-metal.cpp
+index 365052e0e..dc9cacbcc 100644
+--- a/tests/test-skippy-tracing-metal.cpp
++++ b/tests/test-skippy-tracing-metal.cpp
+@@ -122,9 +122,12 @@ int main() {
+     const char * backend_name = ggml_backend_reg_name(ggml_backend_metal_reg());
+     const int64_t submitted_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+             submitted.time_since_epoch()).count();
+-    // mul and add are neither attention, mat-muls, recurrent state nor KV writes
++    // Mul/add and empty trailing command buffers are neither attention,
++    // mat-muls, recurrent state nor KV writes.
+     uint32_t other_nodes = 0;
+     for (const auto & t : received) {
++        std::fprintf(stderr, "timing: command=%u/%u nodes=%u class=%s other=%u\n",
++                t.command_index, t.command_count, t.node_count, t.op_class, t.other_nodes);
+         other_nodes += t.other_nodes;
+         CHECK(std::strcmp(t.op_class, "other") == 0);
+         CHECK(t.attention_nodes == 0 && t.matmul_nodes == 0 && t.recurrent_nodes == 0 && t.kv_write_nodes == 0);
+-- 
+2.56.0
+

@@ -1,0 +1,83 @@
+---
+title: Install and run Skippy
+description: Download a Skippy release, inspect the runtime, and serve a first model.
+---
+
+# Install and run Skippy
+
+Skippy consists of a backend-neutral CLI and a verified native runtime selected
+for the host, architecture, accelerator, and Skippy ABI. Install both parts
+before serving a model.
+
+The release archive bundles the executable and native runtime for its platform
+and backend.
+
+## Download a release
+
+From a new directory, use an authorized GitHub CLI session to download the
+archive and checksum for your platform. Replace `VARIANT` with a bundle from
+the release, such as `darwin-aarch64-metal` or `linux-x86_64-cpu`.
+
+```console
+gh release download --repo Mesh-LLM/skippy \
+  --pattern 'skippy-*-VARIANT.tar.gz*'
+```
+
+You can also download the matching archive and checksum from GitHub.
+[Latest Skippy release](https://github.com/Mesh-LLM/skippy/releases/latest)
+
+Check the archive against its `.sha256` sidecar using `shasum -a 256 -c` on
+macOS or `sha256sum -c` on Linux.
+Once verified, replace `ARCHIVE` with the downloaded `.tar.gz` filename and run:
+
+```console
+tar -xzf ARCHIVE
+./skippy --version
+./skippy doctor
+```
+
+Keep the executable and its `native-runtimes/` directory together. Run
+`./skippy` from the extracted directory. [Contributing guide for source builds](/contributing/#build-from-source)
+
+## How runtime discovery works
+
+The CLI first checks verified runtime bundles beside the executable, then its
+configured bundle roots and platform cache. It admits a runtime only when its
+host, architecture, backend, release metadata, native ABI, and recorded file
+hashes are compatible with the CLI and serving request.
+
+Run `skippy doctor` when selection fails. It reports the current machine,
+installed runtimes, supported backends, and the reason a candidate was rejected.
+
+## Serve a model
+
+```console
+./skippy models recommended
+./skippy serve --model Qwen3-0.6B-Q4_K_M
+```
+
+Wait for the ready message or, in JSONL mode, the `ready` event before sending
+requests. The default public address is `http://127.0.0.1:9337`.
+
+## Confirm the model
+
+```console
+curl http://127.0.0.1:9337/v1/models
+```
+
+A successful response confirms that the server is ready and exposes the model
+identifier clients must send in inference requests.
+
+## Command reference
+
+| Task | Command |
+| --- | --- |
+| Download the latest bundle and checksum | `gh release download --repo Mesh-LLM/skippy --pattern 'skippy-*-VARIANT.tar.gz*'` |
+| Unpack the release | `tar -xzf ARCHIVE` |
+| Inspect the installation | `skippy doctor` |
+| List installed runtimes | `skippy runtime list` |
+| Install a compatible runtime | `skippy runtime install` |
+| Start serving | `skippy serve --model MODEL` |
+| Inspect served models | `GET /v1/models` |
+
+Next: [make an inference request](/getting-started/first-request/).

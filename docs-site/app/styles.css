@@ -1,0 +1,90 @@
+:root {
+  --skippy-blue: #2457d6;
+  --skippy-blue-dark: #8eaeff;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--skippy-blue) 24%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--skippy-blue);
+  outline-offset: 3px;
+}
+
+.skippy-brand {
+  display: inline-flex;
+  align-items: center;
+  width: 132px;
+  height: 36px;
+  overflow: hidden;
+}
+
+.skippy-logo {
+  display: block;
+  width: 132px;
+  height: auto;
+  filter: none;
+  mix-blend-mode: normal;
+}
+
+.nextra-navbar a:hover .skippy-logo {
+  filter: none;
+}
+
+.dark .skippy-logo,
+.dark .nextra-navbar a:hover .skippy-logo {
+  filter: invert(1);
+}
+
+.nextra-content {
+  font-size: 1rem;
+  line-height: 1.72;
+}
+
+.nextra-content p,
+.nextra-content li {
+  max-width: 72ch;
+}
+
+.nextra-content h2,
+.nextra-content h3 {
+  scroll-margin-top: 6rem;
+}
+
+.nextra-content a {
+  text-underline-offset: 0.18em;
+}
+
+.skippy-not-found {
+  margin: 8rem auto;
+  max-width: 36rem;
+  padding: 0 1.5rem;
+}
+
+.skippy-not-found__eyebrow {
+  color: var(--skippy-blue);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .skippy-brand,
+  .skippy-logo {
+    width: 108px;
+  }
+}

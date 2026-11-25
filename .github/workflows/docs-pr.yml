@@ -1,0 +1,13 @@
+name: Documentation PR
+on:
+  pull_request:
+    paths:
+      - 'docs-site/**'
+jobs:
+  validation:
+    if: >-
+      github.repository == 'Mesh-LLM/skippy' && vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true'
+    permissions:
+      contents: read
+    cache-mode: none
+    uses: Mesh-LLM/skippy/.github/workflows/docs.yml@main

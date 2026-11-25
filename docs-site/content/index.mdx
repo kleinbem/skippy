@@ -1,0 +1,49 @@
+---
+title: "Skippy: a distributed AI inference engine"
+description: Run local and distributed inference with Skippy.
+---
+
+# Introducing Skippy
+
+Skippy is an AI inference engine for local and distributed workloads. It is the
+inference engine that powers [Mesh LLM](https://meshllm.cloud).
+
+Built on `llama.cpp`, Skippy adds production-focused model and runtime
+management, OpenAI- and Anthropic-compatible APIs, explicit pipeline
+parallelism, multi-tier KV caching, memory-aware scheduling, and
+hardware-specific optimizations.
+
+Skippy supports CPU inference and GPU acceleration through Metal, CUDA, ROCm,
+and Vulkan. Run it on a single machine or divide one verified model across an
+ordered set of workers. A single CLI and configuration model takes you from
+local inference to multi-machine serving.
+
+## Serve your first model
+
+Download and unpack the [latest Skippy release](https://github.com/Mesh-LLM/skippy/releases/latest).
+Then run this command from the extracted directory.
+
+```console
+./skippy serve --model Qwen3-0.6B-Q4_K_M --prompt
+```
+
+## How Skippy serves a request
+
+Skippy resolves the model and a compatible native runtime, plans memory for
+weights and live context state, and opens one serving lifecycle for both API
+styles. Each request is tokenized, admitted by the scheduler, evaluated by the
+local runtime or ordered pipeline stages, and sampled by stage zero.
+
+The same lifecycle owns model identity, prefix-cache compatibility, runtime
+selection, request limits, and telemetry. That keeps local and distributed
+serving behavior consistent even when the model is divided across machines.
+
+## Learn
+
+- [Install and run Skippy](/getting-started/)
+- [Run local, Hugging Face, and multimodal models](/running-models/)
+- [Split a model across explicit stages](/pipeline-parallelism/)
+- [Tune prompt-prefix and KV storage](/kv-caching/)
+- [Look up CLI commands and flags](/cli/)
+- [Review every serving setting](/configuration/)
+- [Contribute safely](/contributing/)

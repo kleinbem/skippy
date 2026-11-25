@@ -1,0 +1,12 @@
+[package]
+name = "skippy-production-consumer"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+exclude = ["vendor/skippy"]
+
+[dependencies]
+skippy-api = { path = "vendor/skippy/crates/skippy-api", default-features = false, features = ["dynamic-native-runtime"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

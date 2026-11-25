@@ -1,0 +1,164 @@
+# CI always overrides this with a digest-pinned vendor image.
+ARG TOOLKIT_BASE=ubuntu:24.04
+FROM ${TOOLKIT_BASE} AS toolkit
+
+ARG BACKEND
+ARG TOOLKIT_VERSION
+COPY scripts/ci-preserve-cuda-license.sh /tmp/ci-preserve-cuda-license.sh
+
+# Drop vendor content CI never uses so consumers can pull the image onto
+# hosted runners with a 14 GB disk budget: profilers, docs, samples, the
+# compute sanitizer, and every static archive (builds link the shared
+# runtime; nvvm, stubs, and compat stay). Keep /opt/rocm/share entirely:
+# hipcc resolves its configuration and version through that tree, it is
+# only ~30 MB, and deleting it breaks the HIP probe with undeclared
+# device math identifiers in clang's CUDA-compat headers. Never create
+# either toolkit root here: on the ROCm base a bare /usr/local/cuda
+# makes ROCm's clang detect a phantom CUDA SDK. Deleting in the toolkit
+# stage, before the final stage copies the surviving tree, actually
+# shrinks the pulled image; deleting in the final stage would only mask
+# files inside retained layers. libcudadevrt.a and libcudart_static.a are
+# exceptions: device linking needs -lcudadevrt and it exists only as a
+# static archive, and nvcc links the host runtime statically by default
+# (CMake's CUDA_RUNTIME_LIBRARY default), so consumers' CMake compiler
+# identification fails without them. libclang_rt* archives are the other
+# exception: clang's compiler-rt builtins are linked into every clang++
+# and hipcc link, and hipcc resolves them from the ROCm clang resource
+# directory, so deleting them breaks any device-host link.
+RUN set -eu \
+    && case "$BACKEND" in \
+         cuda12|cuda13) bash /tmp/ci-preserve-cuda-license.sh "$TOOLKIT_VERSION" ;; \
+       esac \
+    && rm -rf \
+      /usr/local/cuda/nsight-compute* \
+      /usr/local/cuda/nsight-systems* \
+      /usr/local/cuda/extras \
+      /usr/local/cuda/share \
+      /usr/local/cuda/doc \
+      /usr/local/cuda/samples \
+      /usr/local/cuda/bin/compute-sanitizer* \
+      /usr/local/cuda/compute-sanitizer* \
+      /opt/rocm/docs \
+    && for tree in /usr/local/cuda /opt/rocm; do \
+         if [ -e "$tree" ]; then \
+           find "$(readlink -f "$tree")" -name '*.a' ! -name 'libcudadevrt.a' ! -name 'libcudart_static.a' ! -name 'libclang_rt*' -type f -delete; \
+         fi; \
+       done \
+    && for tree in /usr/local/cuda /usr/local/cuda-* /opt/rocm; do \
+         if [ -L "$tree" ]; then \
+           ln -sfn "$(readlink -f "$tree")" "$tree"; \
+         fi; \
+       done
+
+# CUDA and ROCm resolve their toolkit aliases through /etc/alternatives,
+# which is not part of the copied trees; the toolkit stage flattens those
+# chains to direct symlinks so the final image does not dangle. Copy the
+# parent directories so symlinks survive: the vendor trees use /usr/local/cuda ->
+# /usr/local/cuda-<version> and the flattened /opt/rocm ->
+# /opt/rocm-<version>, and scripts call the versioned paths.
+FROM ubuntu:24.04@sha256:73b999393d07f2bf65a40373778a44dc9a6d54ad7718d29247d8ff9413c4d6a8
+
+# All GPU backends use the same host build tools for a given architecture.
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential ca-certificates clang clang-format clang-tidy cmake curl \
+      git libclang-dev libclang-rt-dev libcurl4-openssl-dev libedit-dev \
+      libssl-dev libzstd-dev lld llvm-dev mold ninja-build patchelf pkg-config jq python3 \
+      rustup xz-utils zlib1g-dev zstd \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the pruned vendor trees after installing the common host packages.
+COPY --from=toolkit /usr/local/ /usr/local/
+COPY --from=toolkit /opt/ /opt/
+
+ARG BACKEND
+ARG TOOLKIT_VERSION
+ARG TARGETARCH
+
+LABEL org.opencontainers.image.source="https://github.com/Mesh-LLM/skippy" \
+      org.opencontainers.image.description="Skippy ${BACKEND} CI toolchain" \
+      org.opencontainers.image.version="${TOOLKIT_VERSION}" \
+      io.skippy.ci.backend="${BACKEND}"
+
+ENV CARGO_HOME=/opt/rust/cargo \
+    RUSTUP_HOME=/opt/rust/rustup \
+    PATH=/opt/rust/cargo/bin:/usr/local/cuda/bin:/usr/local/cuda-13.1/bin:/usr/local/cuda-12.9/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/rocm/bin:/opt/rocm/llvm/bin \
+    CC=/usr/bin/clang \
+    CXX=/usr/bin/clang++ \
+    LIBCLANG_PATH=/usr/lib/llvm-18/lib \
+    SKIPPY_REWRITER_LLVM_PREFIX=/usr/lib/llvm-18 \
+    SKIPPY_CI_BACKEND=${BACKEND} \
+    SKIPPY_CI_TOOLKIT_VERSION=${TOOLKIT_VERSION} \
+    CUDA_PATH=/usr/local/cuda \
+    ROCM_PATH=/opt/rocm \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:/opt/rocm/lib \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+RUN test "$(dpkg --print-architecture)" = "$TARGETARCH" \
+    && case "$TARGETARCH" in \
+         amd64) \
+           rust_arch=x86_64; \
+           just_sha=4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d; \
+           sccache_sha=aa73c7270c997894038c0d8f0d297865f57569e1687883322bc431713d4bb9dd ;; \
+         arm64) \
+           rust_arch=aarch64; \
+           just_sha=748237128c4c40cbdabc65e841d05ceba13cc23a91eaba395495894c1d9764df; \
+           sccache_sha=3e47fc4a71b1ddd1b4294a0de9d34498922fdf41e3cd0bda5df3954e3d6deb9d ;; \
+         *) echo "unsupported image architecture: $TARGETARCH" >&2; exit 1 ;; \
+       esac \
+    && sccache_release="sccache-v0.19.0-${rust_arch}-unknown-linux-musl" \
+    && curl --fail --location --retry 3 -o /tmp/just.tar.gz \
+      "https://github.com/casey/just/releases/download/1.58.0/just-1.58.0-${rust_arch}-unknown-linux-musl.tar.gz" \
+    && printf '%s  /tmp/just.tar.gz\n' "$just_sha" | sha256sum --check \
+    && tar -xzf /tmp/just.tar.gz -C /usr/local/bin just \
+    && curl --fail --location --retry 3 -o /tmp/sccache.tar.gz \
+      "https://github.com/mozilla/sccache/releases/download/v0.19.0/${sccache_release}.tar.gz" \
+    && printf '%s  /tmp/sccache.tar.gz\n' "$sccache_sha" | sha256sum --check \
+    && tar -xzf /tmp/sccache.tar.gz --strip-components=1 -C /usr/local/bin \
+      "${sccache_release}/sccache" \
+    && rm /tmp/just.tar.gz /tmp/sccache.tar.gz
+
+RUN groupadd --gid 1001 runner \
+    && useradd --uid 1001 --gid 1001 --create-home runner \
+    && mkdir -p /opt/rust/cargo /opt/rust/rustup /workspace \
+    && chown runner:runner /opt/rust/cargo /opt/rust/rustup /workspace
+USER runner
+COPY rust-toolchain.toml /opt/skippy-ci/rust-toolchain.toml
+WORKDIR /opt/skippy-ci
+RUN rustc --version \
+    && rustup default "$(rustup show active-toolchain | cut -d ' ' -f 1)"
+
+# Qualify the compiler toolchain without a GPU. Device evidence belongs to CI
+# runtime jobs and must not be inferred from image build or smoke results.
+RUN --network=none image_probe_dir="$(mktemp -d)" \
+    && printf 'fn main() { assert_eq!(6 * 7, 42); }\n' > "$image_probe_dir/probe.rs" \
+    && rustc -C linker=clang -C link-arg=-fuse-ld=mold "$image_probe_dir/probe.rs" -o "$image_probe_dir/rust-probe" \
+    && "$image_probe_dir/rust-probe" \
+    && printf '#include <expected>\nint main() { std::expected<int,int> v{41}; auto r = v.and_then([](int n) { return std::expected<int,int>{n+1}; }); return r && *r == 42 ? 0 : 1; }\n' > "$image_probe_dir/probe.cpp" \
+    && g++ -std=c++23 -Wall -Wextra -Werror -fuse-ld=lld -fsanitize=address,undefined \
+      "$image_probe_dir/probe.cpp" -o "$image_probe_dir/cpp-probe" \
+    && "$image_probe_dir/cpp-probe" \
+    && if [ "$BACKEND" = cuda12 ]; then \
+         printf '__global__ void probe() {}\nint main() { return 0; }\n' > "$image_probe_dir/gpu.cu" \
+         && /usr/local/cuda-12.9/bin/nvcc --version | grep -F 'release 12.9,' \
+         && /usr/local/cuda-12.9/bin/nvcc -arch=sm_80 "$image_probe_dir/gpu.cu" -o "$image_probe_dir/gpu-probe"; \
+       elif [ "$BACKEND" = cuda13 ]; then \
+         printf '__global__ void probe() {}\nint main() { return 0; }\n' > "$image_probe_dir/gpu.cu" \
+         && /usr/local/cuda-13.1/bin/nvcc --version | grep -F 'release 13.1,' \
+         && /usr/local/cuda-13.1/bin/nvcc -arch=sm_80 "$image_probe_dir/gpu.cu" -o "$image_probe_dir/gpu-probe"; \
+       elif [ "$BACKEND" = rocm ]; then \
+         printf '#include <hip/hip_runtime.h>\n__global__ void probe() {}\nint main() { return 0; }\n' > "$image_probe_dir/gpu.hip" \
+         && hipcc --offload-arch=gfx942 "$image_probe_dir/gpu.hip" -o "$image_probe_dir/gpu-probe"; \
+       else echo "unsupported GPU backend: $BACKEND" >&2; exit 1; fi \
+    && rm -rf "$image_probe_dir"
+
+USER root
+ARG SKIPPY_CI_IMAGE_ID=local
+ARG SOURCE_REVISION=local
+LABEL org.opencontainers.image.revision="${SOURCE_REVISION}"
+RUN test -n "$SKIPPY_CI_IMAGE_ID" \
+    && printf '%s\n' "$SKIPPY_CI_IMAGE_ID" > /etc/skippy-ci-image-id
+USER runner
+WORKDIR /workspace
+CMD ["bash"]

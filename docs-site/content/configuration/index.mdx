@@ -1,0 +1,195 @@
+---
+title: Serving configuration
+description: Configure Skippy through TOML, environment variables, and CLI options.
+---
+
+# Serving configuration
+
+Serving configuration defines how Skippy loads a model, allocates resources,
+schedules requests, exposes APIs, and records reusable state. Every supported
+operator control is available through `skippy serve --help`.
+
+Use CLI options for temporary overrides and experiments. Use environment
+variables for process-level deployment settings. Use `--settings serve.toml`
+for a complete, reviewable serving configuration.
+
+## Create a settings file
+
+```toml
+version = 1
+
+[model]
+model = "Qwen3-0.6B-Q4_K_M"
+mmap = true
+
+[execution]
+n_gpu_layers = -1
+threads = 4
+batch_size = 512
+
+[kv]
+ctx_size = 8192
+kv_cache_type_k = "f16"
+kv_cache_type_v = "f16"
+
+[cache]
+prefix_cache = "auto"
+kv_cache_disk = "off"
+
+[scheduling]
+generation_concurrency = 2
+continuous_batching = true
+
+[api]
+bind_addr = "127.0.0.1:9337"
+default_max_tokens = 2048
+```
+
+Run with an override and inspect the resolved launch:
+
+```console
+skippy serve --settings serve.toml --temperature 0.2
+skippy serve --settings serve.toml --print-effective-config
+```
+
+## Serve multiple local models
+
+Save this as `serving.toml` to serve two Hugging Face GGUFs locally through one
+listener. Skippy reuses cached weights or downloads them from Hugging Face.
+
+```toml
+version = 1
+bind_addr = "127.0.0.1:9337" # One listener for both models.
+
+[defaults]
+ctx_size = 4096 # Shared context size in tokens.
+
+[[models]]
+id = "small" # Use this ID in the API request's model field.
+model = "Qwen/Qwen3-0.6B-GGUF:Q8_0"
+
+[models.settings]
+ctx_size = 2048 # Override the context size for small.
+
+[[models]]
+id = "large" # This model inherits the shared context size.
+model = "Qwen/Qwen3-1.7B-GGUF:Q8_0"
+```
+
+```sh
+skippy serve --settings serving.toml
+```
+
+Skippy opens the listener after both models load. If a load fails, startup
+stops and Skippy releases any models already opened. From a second terminal,
+list the served IDs and send a chat request to each model.
+
+```sh
+curl -fsS http://127.0.0.1:9337/v1/models
+
+for model in small large; do
+  curl -fsS http://127.0.0.1:9337/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -w '\n' \
+    --data-binary @- <<JSON
+{"model":"$model","messages":[{"role":"user","content":"Reply with OK"}],"max_tokens":64}
+JSON
+done
+```
+
+### Pin each model to a specific GPU
+
+Use a runtime that can see both GPUs. Find two distinct `stable_id` values in
+`device_inventory.physical_gpus` with `visibility` set to `selectable`.
+
+```sh
+skippy doctor --device-inventory --output json
+```
+
+Save this as `serving-gpus.toml` and replace the GPU ID placeholders with those
+values.
+
+```toml
+version = 1
+bind_addr = "127.0.0.1:9337" # One listener for both models.
+
+[defaults]
+ctx_size = 4096   # Shared context size in tokens.
+n_gpu_layers = -1 # Offload all supported layers to each model's GPU.
+
+[[models]]
+id = "small"
+model = "Qwen/Qwen3-0.6B-GGUF:Q8_0"
+
+[models.settings]
+gpu_id = "FIRST_GPU_STABLE_ID" # Pin small to the first GPU.
+ctx_size = 2048                # Override the context size for small.
+
+[[models]]
+id = "large"
+model = "Qwen/Qwen3-1.7B-GGUF:Q8_0"
+
+[models.settings]
+gpu_id = "SECOND_GPU_STABLE_ID" # Pin large to the second GPU.
+```
+
+Stop the first server before reusing the address. Skippy checks each model's
+estimated memory against its chosen GPU's capacity before loading. Use the same
+API requests to call the two models.
+
+```sh
+skippy serve --settings serving-gpus.toml
+```
+
+### Multi-model settings
+
+Each entry takes exactly one source. Both `[model].model` and `[[models]].model`
+accept the same catalog names, Hugging Face references, and local paths as
+`skippy serve --model`. For a local GGUF, either `model` or `model_path` accepts
+the path. Relative paths resolve from the settings file. In an existing
+multi-model file, rename `path` to `model_path` and keep `version = 1`.
+
+All served IDs must be unique. If you omit `id`, Skippy uses the catalog or Hub
+reference, or the filename stem for a local GGUF.
+
+Put shared tuning under `[defaults]` and per-model overrides under
+`[models.settings]`. Environment variables and CLI tuning options override the
+same setting for every model. Specify sources in `[[models]]` when serving a
+list and omit global selectors such as `[model]` and `--model`. Set the listener
+with top-level `bind_addr` and the shared runtime under `[runtime]`. Use
+`--print-effective-config` to inspect each model's resolved settings and ID
+before native model loading. Skippy can acquire model files while preparing the
+report.
+
+## How settings resolve
+
+Settings resolve in this order:
+
+1. Explicit command-line options.
+2. `SKIPPY_SERVE_<OPTION_NAME>` environment variables.
+3. Values in the serving settings file.
+4. Admitted model/stage policy and built-in defaults.
+
+Paths in a settings file are relative to that file. Paths supplied on the CLI
+remain relative to the working directory. Unknown keys, wrong sections, invalid
+values, and conflicting model sources are errors.
+
+Environment variables use the CLI representation and the
+`SKIPPY_SERVE_<OPTION_NAME>` form. For example,
+`SKIPPY_SERVE_THREADS=8` sets `[execution].threads`; `--threads 4` overrides it.
+
+`--print-effective-config` reports resolved values and their sources, then
+exits before loading the model or opening the listener. Skippy can still
+acquire or verify local model files and plan memory. A prepared stage config
+can be inspected without loading a native runtime.
+
+## Configuration surfaces
+
+| Surface | Best for | Example |
+| --- | --- | --- |
+| CLI | One run or a measured override | `--temperature 0.2` |
+| Environment | Deployment-level process settings | `SKIPPY_SERVE_THREADS=8` |
+| TOML | Versioned complete serving policy | `--settings serve.toml` |
+| Admitted stage plan | Planner-owned split identity and tensor closure | `--config stage-0.json` |
+
+Continue to the [option reference](/configuration/reference/).

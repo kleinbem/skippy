@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "surface": "docs-site",
+  "direction": "code-led engineering handbook",
+  "brand": {
+    "logo": "docs-site/public/skippy-logo.png",
+    "accentLight": "#2457d6",
+    "accentDark": "#8eaeff"
+  },
+  "layout": {
+    "framework": "Nextra documentation theme",
+    "proseMeasure": "72ch",
+    "proseLineHeight": 1.72
+  },
+  "principles": [
+    "runnable quickstart first",
+    "familiar documentation navigation",
+    "searchable operator guidance",
+    "standalone Skippy only"
+  ]
+}

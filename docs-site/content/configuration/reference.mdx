@@ -1,0 +1,191 @@
+---
+title: Option reference
+description: The supported Skippy serving-settings groups and their purpose.
+---
+
+# Option reference
+
+The CLI flag uses kebab case and the TOML key uses snake case. This page groups
+the public surface; run `skippy serve --help` for the exact accepted values and
+current defaults.
+
+Use this reference after choosing a serving behavior. Start with automatic
+defaults, inspect them with `--print-effective-config`, then override only the
+controls supported by a measurement or deployment requirement.
+
+## `[model]`
+
+| TOML key | Purpose |
+| --- | --- |
+| `model` | Select a catalog ID, Hugging Face GGUF or layer package, or a local GGUF path |
+| `model_path` | Select a local GGUF path explicitly |
+| `mmproj` | Select a multimodal projector |
+| `mmap`, `mlock` | Control model weight mapping and page locking |
+
+## `[[models]]`
+
+Set `version = 1` and choose exactly one source per entry.
+[Multi-model settings example](/configuration/#serve-multiple-local-models)
+
+| TOML key | Purpose |
+| --- | --- |
+| `model` | Resolve a model using the same rules as `[model].model` and `--model` |
+| `model_path` | Open a local GGUF path explicitly. Replaces the previous `path` key. |
+| `id` | Override the public model ID. Defaults to the model reference or local filename stem. IDs must be unique. |
+| `settings` | Override per-model controls from `[defaults]` |
+
+## `[execution]`
+
+For an infrequently used local model, defer the native load until the first
+inference request and release the model after a minute of inactivity.
+
+```sh
+skippy serve --model-path /models/model.gguf --on-demand --idle-evict-secs 60
+```
+
+Model acquisition and preparation still run at startup. Concurrent cold
+requests share one load, and active requests and streams keep the model
+resident. The next inference request after eviction reloads it.
+
+Residency controls require an unsplit public server and a local source of known
+size. They are incompatible with `--prompt` and `--stage-transport`. A budget
+below the source size causes loading to fail. Actual memory use also depends
+on runtime allocations.
+
+| TOML key | Purpose |
+| --- | --- |
+| `device` | Select a backend device reported by `skippy doctor` |
+| `n_gpu_layers` | Control GPU layer placement |
+| `gpu_id` | Pin a local model to a stable GPU ID. Requires GPU offload and conflicts with `device` and prepared stage configs. |
+| `threads`, `threads_batch` | Set CPU threads for generation and prompt processing |
+| `batch_size`, `microbatch_size` | Set native batch token limits. Local preparation defaults to 2048 and 512, respectively. |
+| `split_mode`, `main_gpu` | Configure supported multi-GPU placement |
+| `on_demand` | Defer native loading until the first inference request. Defaults to `false` (eager loading). |
+| `idle_evict_secs` | Release the model after 1–86,400 idle seconds. Omit to disable idle eviction. |
+| `residency_budget_bytes` | Positive admission budget in bytes. Defaults to the identified model's source size. |
+
+Residency settings require a public server for one unsplit model with a local
+source of known size. Use CLI flags with the same names in kebab case or environment
+overrides such as `SKIPPY_SERVE_ON_DEMAND`. See [Load a model on demand](/running-models/#load-a-model-on-demand).
+
+The environment overrides are `SKIPPY_SERVE_ON_DEMAND`,
+`SKIPPY_SERVE_IDLE_EVICT_SECS`, and `SKIPPY_SERVE_RESIDENCY_BUDGET_BYTES`.
+
+## `[kv]`
+
+| TOML key | Purpose |
+| --- | --- |
+| `ctx_size` | Set the live context capacity |
+| `kv_cache_type_k`, `kv_cache_type_v` | Select `f16`, `q8_0`, or `q4_0` live KV precision |
+| `kv_cache_offload` | Offload supported KV work to the backend |
+| `flash_attention` | Select automatic, enabled, or disabled Flash Attention |
+| `cache_idle_slots` | Limit retained idle sessions |
+| `kv_pool_tokens` | Bound the shared pool; at least one request's context window |
+| `kv_lazy_clear`, `kv_release_pages` | Control incremental zeroing and release of unused host-visible KV pages |
+| `kv_row_attention` | Enable per-request row lists on supported backends |
+
+## `[cache]`
+
+| TOML key | Purpose |
+| --- | --- |
+| `prefix_cache` | Select `auto`, `on`, `off`, or `record` |
+| `prefix_cache_budget` | Set the resident retention target |
+| `prefix_cache_max_entries`, `prefix_cache_min_tokens` | Bound retained entries and minimum useful prefixes |
+| `prefix_cache_ram` | Bound native recurrent-checkpoint RAM; serialized runtimes use an optional tier above disk |
+| `prefix_cache_retention_tokens` | Bound attention cells retained after requests finish. Defaults to 16,384 tokens. Use `0` to release all finished-request cells or `unbounded` to retain as much as the shared pool allows. |
+| `prefill_admission` | Select `cooperative` (default) or `serialized` suffix prefill |
+| `kv_cache_disk`, `kv_cache_disk_dir` | Set the disk cache budget and location. The default is `off`. The `auto` budget is capped at 64 GiB. |
+| `kv_cache_min_free` | Reserve free space on the cache volume. Defaults to `16GiB` and accepts IEC sizes of at least `1GiB`. |
+
+## `[scheduling]`
+
+| TOML key | Purpose |
+| --- | --- |
+| `generation_concurrency` | Set active generation lanes |
+| `continuous_batching` | Serve concurrent lanes in the iteration scheduler |
+| `batch_policy` | Select the arrival-order batch policy |
+| `batch_decode_window_us`, `batch_prefill_window_per_token_us` | Tune batch gathering latency |
+| `prefill_coalesce_max_ms` | Cap the total batching wait for a prefill wave. Use `0` to skip the wait. |
+| `sample_threads` | Select pooled sampling (0), inline sampling (1), or a thread cap |
+| `generation_queue_capacity` | Bound queued requests |
+| `generation_admission_timeout_secs` | Bound queue wait time. Defaults to `0`, which waits until cancellation. |
+| `prefill_chunk_size`, `prefill_chunk_policy` | Configure chunked prefill |
+
+## `[sampling]`
+
+Request defaults include `temperature`, `top_k`, `top_p`, `min_p`, `typical_p`,
+repetition penalties, `seed`, `stop`, `logit_bias`, sampler order, and
+`request_max_tokens`. Explicit request values override these defaults.
+
+## `[chat]`
+
+Chat behavior includes `chat_template`, `system_prompt`, reasoning controls,
+`grammar`, `json_schema`, Jinja rendering, and request-template policy. Treat
+`allow_request_chat_template` as a trust decision for every caller that can
+reach the server.
+
+## `[speculative]`
+
+`speculative_strategy` accepts `auto` (default), `disabled`, `draft-model`,
+`native-mtp`, `ngram`, `mtp-ngram`, and `dflash`. Explicit strategies require a
+compatible target and native runtime. Use `draft_model_path` and
+`dflash_max_tokens` to select and tune an explicit DFlash drafter.
+
+For unsplit local serving with automatic speculation, Skippy checks the model's
+package policy and its release-pinned draft catalog against the target metadata
+and the selected backend. It reuses a compatible cached draft or fetches and
+verifies one when allowed. `HF_HUB_OFFLINE=1` limits this lookup to cached
+and bundled data. `--print-effective-config` performs no draft download. If
+draft preparation fails, Skippy retains the model's baseline behavior. An
+explicit draft or speculative plan takes precedence.
+
+## `[media]`
+
+`mmproj` selects the optional multimodal projector GGUF. This section also
+controls request-side media limits.
+
+## `[api]`
+
+Public bind address, response limits, compatibility guardrails, prompt mode,
+and context compaction. Use `model_id` to override the public ID for one model.
+Common controls include `bind_addr`,
+`default_max_tokens`, `guardrails`, `compact`, `compact_trigger_percent`, and
+`compact_target_percent`.
+
+## `[distributed]`
+
+Prepared stage plan, ordered topology, binary stage transport, worker-only
+mode, activation codec, flow control, and downstream timeouts. Split identity
+and tensor closure remain owned by the generated stage plan.
+
+## `[runtime]`
+
+Native runtime bundle roots, cache location, release selection, and selection
+policy.
+
+## `[diagnostics]`
+
+Human/JSON output, debug logs, metrics export, and telemetry level.
+`startup_timeout_secs` defaults to 60 seconds. With residency enabled it
+bounds every native load, including reloads after eviction. In that mode,
+`0` acts as one second and values above 86,400 seconds are rejected.
+
+| Environment variable | Output |
+| --- | --- |
+| `SKIPPY_TELEMETRY_STDERR=1` | Skippy event JSON on stderr |
+| `SKIPPY_TELEMETRY_OTLP_FILE` | OTLP/JSON trace export requests appended to a file |
+| `SKIPPY_TELEMETRY_OTLP_LOGS_FILE` | OTLP/JSON log export requests appended to a file |
+| `SKIPPY_TELEMETRY_OTLP_METRICS_FILE` | OTLP/JSON metrics export requests appended to a file |
+| `SKIPPY_TELEMETRY_METRICS_INTERVAL_MS` | Resource metrics sampling interval. Defaults to 250 ms with a minimum of 20 ms. |
+| `SKIPPY_TELEMETRY_TRACY=1` | Enable a local Tracy sink in a build with Tracy support. Recording starts when a profiler connects. |
+
+## `[network]`
+
+Wire-delay, bandwidth, jitter, and stall simulation for controlled distributed
+experiments.
+
+The repository's canonical field-by-field table is
+`docs/SERVING_SETTINGS.md`. Keep that source and this public index consistent
+when adding or retiring a serving option.
+
+For command syntax and global flags, see the [CLI reference](/cli/).

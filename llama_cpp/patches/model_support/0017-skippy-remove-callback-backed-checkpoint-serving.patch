@@ -1,0 +1,759 @@
+From 3c9a23da3262ff04ef4ee0be5dd8b158c8b458f3 Mon Sep 17 00:00:00 2001
+From: Skippy <build@skippy.local>
+Date: Fri, 20 Nov 2026 16:34:51 +1100
+Subject: [PATCH] skippy: remove callback-backed checkpoint serving
+
+---
+ include/skippy.h              |   1 -
+ include/skippy/common.h       |   4 +-
+ include/skippy/model_source.h |  84 ------
+ src/CMakeLists.txt            |   1 -
+ src/llama-model-loader.h      |   7 -
+ src/llama.cpp                 |  14 -
+ src/skippy/abi.cpp            |   1 -
+ src/skippy/model_loading.cpp  |  32 ++-
+ src/skippy/model_source.cpp   | 465 ----------------------------------
+ 9 files changed, 32 insertions(+), 577 deletions(-)
+ delete mode 100644 include/skippy/model_source.h
+ delete mode 100644 src/skippy/model_source.cpp
+
+diff --git a/include/skippy.h b/include/skippy.h
+index 15d9af032..27f96181e 100644
+--- a/include/skippy.h
++++ b/include/skippy.h
+@@ -15,7 +15,6 @@
+ #include "skippy/tracing.h"
+ #include "skippy/devices.h"
+ #include "skippy/runtime.h"
+-#include "skippy/model_source.h"
+ #include "skippy/stage_plan.h"
+ #include "skippy/activation.h"
+ #include "skippy/sampling.h"
+diff --git a/include/skippy/common.h b/include/skippy/common.h
+index 63a16bd85..e06e491d5 100644
+--- a/include/skippy/common.h
++++ b/include/skippy/common.h
+@@ -46,7 +46,7 @@ extern "C" {
+ 
+ #define SKIPPY_ABI_VERSION_MAJOR 0
+ #define SKIPPY_ABI_VERSION_MINOR 1
+-#define SKIPPY_ABI_VERSION_PATCH 86
++#define SKIPPY_ABI_VERSION_PATCH 87
+ 
+ #if defined(_MSC_VER)
+ #define SKIPPY_DEPRECATED(message) __declspec(deprecated(message))
+@@ -86,7 +86,7 @@ enum skippy_feature {
+     SKIPPY_FEATURE_MTP_MULTIMODAL         = 1 << 27,
+     SKIPPY_FEATURE_ITERATION_BATCH        = 1 << 28,
+     SKIPPY_FEATURE_ACTIVATION_BOUNDARY     = 1 << 29,
+-    SKIPPY_FEATURE_MODEL_SOURCE            = 1 << 30,
++    // Bit 30 was used by the removed checkpoint source API.
+ };
+ 
+ // Feature bit 31 is declared as a `uint64_t` constant, not an `enum
+diff --git a/include/skippy/model_source.h b/include/skippy/model_source.h
+deleted file mode 100644
+index 5d77f4804..000000000
+--- a/include/skippy/model_source.h
++++ /dev/null
+@@ -1,84 +0,0 @@
+-#ifndef SKIPPY_MODEL_SOURCE_H
+-#define SKIPPY_MODEL_SOURCE_H
+-
+-/**
+- * @file skippy/model_source.h
+- * @brief Callback-backed model construction and load-time quantization.
+- */
+-
+-#include "common.h"
+-
+-#ifdef __cplusplus
+-extern "C" {
+-#endif
+-
+-struct skippy_model;
+-struct skippy_runtime_config;
+-
+-#define SKIPPY_MODEL_TENSOR_SOURCE_V1_ABI_VERSION 1
+-
+-/** @brief Supplies one canonical model tensor as F32 values during model construction.
+- *
+- * The callback is invoked synchronously and serially while
+- * `skippy_model_open_from_source` is active. `tensor_name` and `destination`
+- * are borrowed only for the callback duration; implementations must write
+- * exactly `element_count` values and must not retain either pointer. On
+- * failure, `out_message` may receive a borrowed NUL-terminated message that
+- * remains valid until `skippy_model_open_from_source` returns.
+- */
+-typedef enum skippy_status (*skippy_model_read_tensor_f32_callback)(
+-        const char * tensor_name,
+-        float * destination,
+-        size_t element_count,
+-        const char ** out_message,
+-        void * user_data);
+-
+-/** @brief One tensor's importance weights for low-bit quantization.
+- *
+- * `tensor_name` identifies the canonical llama.cpp tensor. `values` contains
+- * exactly the weights expected by llama.cpp for that tensor. Both buffers are
+- * borrowed for the synchronous model-open call and are never retained.
+- */
+-struct skippy_model_imatrix_entry_v1 {
+-    const char * tensor_name;
+-    const float * values;
+-    size_t value_count;
+-};
+-
+-/** @brief Versioned callback source for direct checkpoint loading.
+- *
+- * The source and `user_data` are borrowed for the synchronous duration of
+- * `skippy_model_open_from_source` and are never retained by the model.
+- */
+-struct skippy_model_tensor_source_v1 {
+-    uint32_t abi_version;
+-    uint32_t struct_size;
+-    skippy_model_read_tensor_f32_callback read_tensor_f32;
+-    void * user_data;
+-    const struct skippy_model_imatrix_entry_v1 * imatrix;
+-    size_t imatrix_count;
+-};
+-
+-/** @brief Opens a model from metadata-only GGUF and callback-supplied tensor values.
+- *
+- * `metadata_gguf`, `source`, and `source->user_data` must remain valid for
+- * this synchronous call and are not retained; tensor callbacks execute
+- * synchronously before the function returns. `quantization_ftype` is a
+- * llama_ftype value, or -1 to preserve the tensor types declared by
+- * `metadata_gguf`. On success, `out_model` owns the resulting model and must
+- * be released with `skippy_model_free`.
+- */
+-LLAMA_API enum skippy_status skippy_model_open_from_source(
+-        const void * metadata_gguf,
+-        size_t metadata_gguf_size,
+-        const struct skippy_model_tensor_source_v1 * source,
+-        int32_t quantization_ftype,
+-        const struct skippy_runtime_config * config,
+-        struct skippy_model ** out_model,
+-        struct skippy_error ** out_error);
+-
+-#ifdef __cplusplus
+-}
+-#endif
+-
+-#endif // SKIPPY_MODEL_SOURCE_H
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 3a58c962d..707182b75 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -56,7 +56,6 @@ add_library(llama
+             skippy/model_load_config.cpp
+             skippy/model_lifecycle.cpp
+             skippy/model_loading.cpp
+-            skippy/model_source.cpp
+             skippy/session.cpp
+             skippy/verification.cpp
+             skippy/verify_window.cpp
+diff --git a/src/llama-model-loader.h b/src/llama-model-loader.h
+index b8dc0cfa7..7cd451d85 100644
+--- a/src/llama-model-loader.h
++++ b/src/llama-model-loader.h
+@@ -27,13 +27,6 @@ struct llama_model_loader_stage_selection {
+     std::unordered_set<std::string> resident_tensor_names;
+ };
+ 
+-struct llama_model * llama_model_init_from_user_with_selection(
+-        struct gguf_context * metadata,
+-        llama_model_set_tensor_data_t set_tensor_data,
+-        void * set_tensor_data_ud,
+-        struct llama_model_params params,
+-        const llama_model_loader_stage_selection * selection);
+-
+ struct llama_model * llama_model_load_from_file_with_selection(
+         const char * path_model,
+         struct llama_model_params params,
+diff --git a/src/llama.cpp b/src/llama.cpp
+index 654b50dda..2179ac2e6 100644
+--- a/src/llama.cpp
++++ b/src/llama.cpp
+@@ -470,20 +470,6 @@ struct llama_model * llama_model_init_from_user(
+     return llama_model_load_from_file_impl(metadata, set_tensor_data, set_tensor_data_ud, path_model, splits, /*ordered_parts*/ false, /*file*/ nullptr, params);
+ }
+ 
+-struct llama_model * llama_model_init_from_user_with_selection(
+-        struct gguf_context * metadata,
+-        llama_model_set_tensor_data_t set_tensor_data,
+-        void * set_tensor_data_ud,
+-        struct llama_model_params params,
+-        const llama_model_loader_stage_selection * selection) {
+-    GGML_ASSERT(metadata != nullptr);
+-    std::string path_model;
+-    std::vector<std::string> splits = {};
+-    params.load_mode = LLAMA_LOAD_MODE_NONE;
+-    params.use_extra_bufts = false;
+-    return llama_model_load_from_file_impl(metadata, set_tensor_data, set_tensor_data_ud,
+-            path_model, splits, false, nullptr, params, selection);
+-}
+ // deprecated
+ struct llama_model * llama_load_model_from_file(
+         const char * path_model,
+diff --git a/src/skippy/abi.cpp b/src/skippy/abi.cpp
+index c772a3766..8ac906c9e 100644
+--- a/src/skippy/abi.cpp
++++ b/src/skippy/abi.cpp
+@@ -38,7 +38,6 @@ uint64_t skippy_abi_features(void) {
+            SKIPPY_FEATURE_MTP_MULTIMODAL |
+            SKIPPY_FEATURE_ITERATION_BATCH |
+            SKIPPY_FEATURE_ACTIVATION_BOUNDARY |
+-           SKIPPY_FEATURE_MODEL_SOURCE |
+            SKIPPY_FEATURE_RUNTIME_EVENT_REPORTER |
+            SKIPPY_FEATURE_MODEL_LOAD_EVENTS_V2 |
+            SKIPPY_FEATURE_KV_EVENTS |
+diff --git a/src/skippy/model_loading.cpp b/src/skippy/model_loading.cpp
+index 5f100aa46..61100a17e 100644
+--- a/src/skippy/model_loading.cpp
++++ b/src/skippy/model_loading.cpp
+@@ -35,12 +35,14 @@
+ #include <cstdlib>
+ #include <cstring>
+ #include <exception>
++#include <filesystem>
+ #include <fstream>
+ #include <cstdio>
+ #include <limits>
+ #include <regex>
+ #include <set>
+ #include <string>
++#include <string_view>
+ #include <thread>
+ #include <unordered_set>
+ #include <utility>
+@@ -961,6 +963,23 @@ enum skippy_status skippy_finish_model_open(
+     return skippy_success(out_error);
+ }
+ 
++static bool skippy_is_checkpoint_path(const char * path) {
++    std::filesystem::path file(path);
++    std::string name = file.filename().string();
++    std::transform(name.begin(), name.end(), name.begin(),
++            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
++    std::error_code error;
++    const auto has_suffix = [&name](std::string_view suffix) {
++        return name.size() >= suffix.size() &&
++                name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0;
++    };
++    return has_suffix(".safetensors") || has_suffix(".safetensors.index.json") ||
++            std::filesystem::is_directory(file, error);
++}
++
++static constexpr const char * skippy_gguf_path_required =
++        "Expected a GGUF file. Convert any SafeTensors checkpoint to GGUF or select a published GGUF.";
++
+ enum skippy_status skippy_model_open_impl(
+         const char * path,
+         const struct skippy_runtime_config * config,
+@@ -983,6 +1002,11 @@ enum skippy_status skippy_model_open_impl(
+     }
+ 
+     *out_model = nullptr;
++    if (skippy_is_checkpoint_path(path)) {
++        event_scope.emit_failure(SKIPPY_STATUS_INVALID_ARGUMENT, skippy_gguf_path_required);
++        skippy_set_error(out_error, SKIPPY_STATUS_INVALID_ARGUMENT, skippy_gguf_path_required);
++        return SKIPPY_STATUS_INVALID_ARGUMENT;
++    }
+     if (const char * message = skippy_validate_stage_plan_config(config)) {
+         event_scope.emit_failure(SKIPPY_STATUS_INVALID_ARGUMENT, message);
+         skippy_set_error(out_error, SKIPPY_STATUS_INVALID_ARGUMENT, message);
+@@ -1069,6 +1093,7 @@ enum skippy_status skippy_model_open_from_parts_impl(
+         skippy_set_error(out_error, SKIPPY_STATUS_INVALID_ARGUMENT, message);
+         return SKIPPY_STATUS_INVALID_ARGUMENT;
+     }
++    *out_model = nullptr;
+     for (size_t i = 0; i < path_count; ++i) {
+         if (paths[i] == nullptr) {
+             const char * message = "package part path is null";
+@@ -1076,9 +1101,12 @@ enum skippy_status skippy_model_open_from_parts_impl(
+             skippy_set_error(out_error, SKIPPY_STATUS_INVALID_ARGUMENT, message);
+             return SKIPPY_STATUS_INVALID_ARGUMENT;
+         }
++        if (skippy_is_checkpoint_path(paths[i])) {
++            event_scope.emit_failure(SKIPPY_STATUS_INVALID_ARGUMENT, skippy_gguf_path_required);
++            skippy_set_error(out_error, SKIPPY_STATUS_INVALID_ARGUMENT, skippy_gguf_path_required);
++            return SKIPPY_STATUS_INVALID_ARGUMENT;
++        }
+     }
+-
+-    *out_model = nullptr;
+     if (const char * message = skippy_validate_stage_plan_config(config)) {
+         event_scope.emit_failure(SKIPPY_STATUS_INVALID_ARGUMENT, message);
+         skippy_set_error(out_error, SKIPPY_STATUS_INVALID_ARGUMENT, message);
+diff --git a/src/skippy/model_source.cpp b/src/skippy/model_source.cpp
+deleted file mode 100644
+index 2b91f2b71..000000000
+--- a/src/skippy/model_source.cpp
++++ /dev/null
+@@ -1,465 +0,0 @@
+-#include "skippy/model_source.h"
+-
+-#include "skippy/errors.h"
+-#include "skippy/model_load_config_internal.h"
+-#include "skippy/model_loading_internal.h"
+-#include "skippy/runtime.h"
+-#include "skippy/runtime_support.h"
+-
+-#include "ggml-backend.h"
+-#include "gguf.h"
+-#include "llama-ext.h"
+-#include "llama-hparams.h"
+-#include "llama-model-loader.h"
+-
+-#include <algorithm>
+-#include <cmath>
+-#include <cstdint>
+-#include <limits>
+-#include <stdexcept>
+-#include <string>
+-#include <unordered_map>
+-#include <vector>
+-
+-using skippy_imatrix_map = std::unordered_map<std::string, const skippy_model_imatrix_entry_v1 *>;
+-
+-static bool skippy_build_imatrix(
+-        const skippy_model_tensor_source_v1 * source,
+-        skippy_imatrix_map & entries,
+-        std::vector<llama_model_imatrix_data> & native_entries,
+-        std::string & error) {
+-    if (source->imatrix_count > 0 && source->imatrix == nullptr) {
+-        error = "importance matrix count requires a non-null entry array";
+-        return false;
+-    }
+-    native_entries.reserve(source->imatrix_count + 1);
+-    for (size_t i = 0; i < source->imatrix_count; ++i) {
+-        const skippy_model_imatrix_entry_v1 & entry = source->imatrix[i];
+-        if (entry.tensor_name == nullptr || entry.values == nullptr || entry.value_count == 0) {
+-            error = "importance matrix entries require a name and non-empty values";
+-            return false;
+-        }
+-        for (size_t value_index = 0; value_index < entry.value_count; ++value_index) {
+-            if (!std::isfinite(entry.values[value_index])) {
+-                error = "importance matrix contains a non-finite value";
+-                return false;
+-            }
+-        }
+-        if (!entries.emplace(entry.tensor_name, &entry).second) {
+-            error = std::string("duplicate importance matrix entry for ") + entry.tensor_name;
+-            return false;
+-        }
+-        native_entries.push_back({ entry.tensor_name, entry.values, entry.value_count });
+-    }
+-    native_entries.push_back({ nullptr, nullptr, 0 });
+-    return true;
+-}
+-
+-static uint32_t skippy_gguf_u32_or(
+-        const gguf_context * metadata,
+-        const std::string & key,
+-        uint32_t fallback) {
+-    const int64_t key_id = gguf_find_key(metadata, key.c_str());
+-    if (key_id < 0) {
+-        return fallback;
+-    }
+-    switch (gguf_get_kv_type(metadata, key_id)) {
+-        case GGUF_TYPE_UINT32:
+-            return gguf_get_val_u32(metadata, key_id);
+-        case GGUF_TYPE_INT32: {
+-            const int32_t value = gguf_get_val_i32(metadata, key_id);
+-            return value > 0 ? static_cast<uint32_t>(value) : fallback;
+-        }
+-        case GGUF_TYPE_ARRAY:
+-            break;
+-        default:
+-            return fallback;
+-    }
+-
+-    uint32_t result = fallback;
+-    const size_t count = gguf_get_arr_n(metadata, key_id);
+-    switch (gguf_get_arr_type(metadata, key_id)) {
+-        case GGUF_TYPE_UINT32: {
+-            const auto * values = static_cast<const uint32_t *>(gguf_get_arr_data(metadata, key_id));
+-            for (size_t i = 0; i < count; ++i) {
+-                result = std::max(result, values[i]);
+-            }
+-            break;
+-        }
+-        case GGUF_TYPE_INT32: {
+-            const auto * values = static_cast<const int32_t *>(gguf_get_arr_data(metadata, key_id));
+-            for (size_t i = 0; i < count; ++i) {
+-                if (values[i] > 0) {
+-                    result = std::max(result, static_cast<uint32_t>(values[i]));
+-                }
+-            }
+-            break;
+-        }
+-        default:
+-            break;
+-    }
+-    return result;
+-}
+-
+-static bool skippy_imatrix_size(
+-        const ggml_tensor * tensor,
+-        size_t & result,
+-        std::string & error) {
+-    if (tensor->ne[0] <= 0 || tensor->ne[2] <= 0 ||
+-        static_cast<uint64_t>(tensor->ne[0]) > std::numeric_limits<size_t>::max() /
+-                static_cast<uint64_t>(tensor->ne[2])) {
+-        error = std::string("invalid importance matrix shape for tensor ") + ggml_get_name(tensor);
+-        return false;
+-    }
+-    result = static_cast<size_t>(tensor->ne[0]) * static_cast<size_t>(tensor->ne[2]);
+-    return true;
+-}
+-
+-static bool skippy_apply_source_quantization(
+-        gguf_context * metadata,
+-        ggml_context * tensor_context,
+-        int32_t quantization_ftype,
+-        const skippy_imatrix_map & imatrix,
+-        const llama_model_imatrix_data * native_imatrix,
+-        std::string & error) {
+-    if (quantization_ftype < 0) {
+-        return true;
+-    }
+-
+-    const int64_t architecture_id = gguf_find_key(metadata, "general.architecture");
+-    if (architecture_id < 0) {
+-        error = "metadata GGUF is missing general.architecture";
+-        return false;
+-    }
+-    if (gguf_get_kv_type(metadata, architecture_id) != GGUF_TYPE_STRING) {
+-        error = "metadata GGUF general.architecture must be a string";
+-        return false;
+-    }
+-    const char * architecture = gguf_get_val_str(metadata, architecture_id);
+-    const std::string prefix = architecture;
+-    const uint32_t n_embd = skippy_gguf_u32_or(metadata, prefix + ".embedding_length", 0);
+-    const uint32_t n_head = skippy_gguf_u32_or(metadata, prefix + ".attention.head_count", 0);
+-    llama_quant_model_desc desc = {
+-        /*.architecture =*/ architecture,
+-        /*.n_embd =*/ n_embd,
+-        /*.n_ff =*/ skippy_gguf_u32_or(metadata, prefix + ".feed_forward_length", 0),
+-        /*.n_layer =*/ skippy_gguf_u32_or(metadata, prefix + ".block_count", 0),
+-        /*.n_head =*/ n_head,
+-        /*.n_head_kv =*/ skippy_gguf_u32_or(metadata, prefix + ".attention.head_count_kv", n_head),
+-        /*.n_expert =*/ skippy_gguf_u32_or(metadata, prefix + ".expert_count", 0),
+-        /*.n_embd_head_k =*/ skippy_gguf_u32_or(
+-                metadata,
+-                prefix + ".attention.key_length",
+-                n_head > 0 ? n_embd / n_head : 0),
+-        /*.n_embd_head_v =*/ skippy_gguf_u32_or(
+-                metadata,
+-                prefix + ".attention.value_length",
+-                n_head > 0 ? n_embd / n_head : 0),
+-    };
+-    if (desc.n_layer == 0 || desc.n_layer > LLAMA_MAX_LAYERS) {
+-        error = "metadata GGUF has an invalid block count for quantization";
+-        return false;
+-    }
+-    llama_model * quant_model = llama_quant_model_from_metadata(&desc);
+-    if (quant_model == nullptr) {
+-        error = "failed to construct quantization policy from checkpoint metadata";
+-        return false;
+-    }
+-    llama_model_quantize_params quant_params = llama_model_quantize_default_params();
+-    quant_params.ftype = static_cast<llama_ftype>(quantization_ftype);
+-    quant_params.imatrix = native_imatrix;
+-    quantize_state_impl * quant_state = llama_quant_init(quant_model, &quant_params);
+-    if (quant_state == nullptr) {
+-        llama_model_free(quant_model);
+-        error = "failed to initialize tensor quantization policy";
+-        return false;
+-    }
+-
+-    std::vector<ggml_tensor *> tensors;
+-    for (ggml_tensor * tensor = ggml_get_first_tensor(tensor_context);
+-         tensor != nullptr;
+-         tensor = ggml_get_next_tensor(tensor_context, tensor)) {
+-        if (llama_quant_tensor_allows_quantization(quant_state, tensor)) {
+-            tensors.push_back(tensor);
+-        }
+-    }
+-    std::vector<ggml_type> result_types(tensors.size());
+-    if (!tensors.empty()) {
+-        llama_quant_compute_types(
+-                quant_state,
+-                static_cast<llama_ftype>(quantization_ftype),
+-                tensors.data(),
+-                result_types.data(),
+-                tensors.size());
+-    }
+-    for (size_t i = 0; i < tensors.size(); ++i) {
+-        if (llama_quant_tensor_requires_imatrix(
+-                    tensors[i], result_types[i], static_cast<llama_ftype>(quantization_ftype))) {
+-            const auto entry = imatrix.find(ggml_get_name(tensors[i]));
+-            size_t expected = 0;
+-            if (!skippy_imatrix_size(tensors[i], expected, error)) {
+-                llama_quant_free(quant_state);
+-                llama_model_free(quant_model);
+-                return false;
+-            }
+-            if (entry == imatrix.end()) {
+-                error = std::string("missing importance matrix for tensor ") + ggml_get_name(tensors[i]);
+-                llama_quant_free(quant_state);
+-                llama_model_free(quant_model);
+-                return false;
+-            }
+-            if (entry->second->value_count != expected) {
+-                error = std::string("importance matrix size mismatch for tensor ") + ggml_get_name(tensors[i]);
+-                llama_quant_free(quant_state);
+-                llama_model_free(quant_model);
+-                return false;
+-            }
+-        }
+-        gguf_set_tensor_type(metadata, ggml_get_name(tensors[i]), result_types[i]);
+-    }
+-    llama_quant_free(quant_state);
+-    llama_model_free(quant_model);
+-    return true;
+-}
+-
+-struct skippy_model_source_state {
+-    const skippy_model_tensor_source_v1 * source = nullptr;
+-    const skippy_imatrix_map * imatrix = nullptr;
+-    std::string error;
+-};
+-
+-static void skippy_set_model_tensor_from_source(ggml_tensor * tensor, void * user_data) {
+-    auto * state = static_cast<skippy_model_source_state *>(user_data);
+-    const int64_t element_count_i64 = ggml_nelements(tensor);
+-    if (element_count_i64 < 0) {
+-        throw std::runtime_error("source tensor has a negative element count");
+-    }
+-    const size_t element_count = static_cast<size_t>(element_count_i64);
+-    std::vector<float> source_values(element_count);
+-    const char * callback_message = nullptr;
+-    const skippy_status status = state->source->read_tensor_f32(
+-            ggml_get_name(tensor),
+-            source_values.data(),
+-            element_count,
+-            &callback_message,
+-            state->source->user_data);
+-    if (status != SKIPPY_STATUS_OK) {
+-        state->error = callback_message != nullptr
+-                ? callback_message
+-                : "model tensor source callback failed";
+-        throw std::runtime_error(state->error);
+-    }
+-
+-    const int64_t elements_per_row = tensor->ne[0];
+-    if (elements_per_row <= 0 || element_count_i64 % elements_per_row != 0) {
+-        state->error = "source tensor has an invalid row shape";
+-        throw std::runtime_error(state->error);
+-    }
+-    std::vector<uint8_t> encoded(ggml_nbytes(tensor));
+-    const float * imatrix = nullptr;
+-    const auto imatrix_entry = state->imatrix->find(ggml_get_name(tensor));
+-    if (imatrix_entry != state->imatrix->end()) {
+-        size_t expected = 0;
+-        if (!skippy_imatrix_size(tensor, expected, state->error)) {
+-            throw std::runtime_error(state->error);
+-        }
+-        if (imatrix_entry->second->value_count != expected) {
+-            state->error = std::string("importance matrix size mismatch for tensor ") + ggml_get_name(tensor);
+-            throw std::runtime_error(state->error);
+-        }
+-        imatrix = imatrix_entry->second->values;
+-    }
+-    size_t written = 0;
+-    if (imatrix != nullptr && tensor->ne[2] > 1) {
+-        // llama.cpp records one importance vector per expert. Quantize 3-D
+-        // expert tensors one slice at a time so each expert sees its own
+-        // ne[0]-wide vector instead of reusing expert zero's weights.
+-        const int64_t rows_per_expert = tensor->ne[1];
+-        for (int64_t expert = 0; expert < tensor->ne[2]; ++expert) {
+-            written += ggml_quantize_chunk(
+-                    tensor->type,
+-                    source_values.data(),
+-                    encoded.data(),
+-                    expert * rows_per_expert * elements_per_row,
+-                    rows_per_expert,
+-                    elements_per_row,
+-                    imatrix + expert * elements_per_row);
+-        }
+-    } else {
+-        written = ggml_quantize_chunk(
+-                tensor->type,
+-                source_values.data(),
+-                encoded.data(),
+-                0,
+-                element_count_i64 / elements_per_row,
+-                elements_per_row,
+-                imatrix);
+-    }
+-    if (written != encoded.size()) {
+-        state->error = "source tensor encoding produced an unexpected byte count";
+-        throw std::runtime_error(state->error);
+-    }
+-    ggml_backend_tensor_set(tensor, encoded.data(), 0, encoded.size());
+-}
+-
+-static llama_model_loader_stage_selection skippy_source_selection(
+-        const skippy_runtime_config * config) {
+-    llama_model_loader_stage_selection selection;
+-    if (!skippy_runtime_has_stage_plan(config)) {
+-        return selection;
+-    }
+-    selection.layer_start = config->layer_start;
+-    selection.layer_end = config->layer_end;
+-    if (config->resident_tensor_name_count == 0 || config->resident_tensor_names == nullptr) {
+-        throw std::invalid_argument("filtered stage loading requires explicit resident tensor names");
+-    }
+-    for (size_t i = 0; i < config->resident_tensor_name_count; ++i) {
+-        const char * name = config->resident_tensor_names[i];
+-        if (name == nullptr || name[0] == '\0') {
+-            throw std::invalid_argument("resident tensor names must be non-empty");
+-        }
+-        if (!selection.resident_tensor_names.emplace(name).second) {
+-            throw std::invalid_argument("resident tensor names must be unique");
+-        }
+-    }
+-    return selection;
+-}
+-
+-static enum skippy_status skippy_model_open_from_source_impl(
+-        const void * metadata_gguf,
+-        size_t metadata_gguf_size,
+-        const struct skippy_model_tensor_source_v1 * source,
+-        int32_t quantization_ftype,
+-        const struct skippy_runtime_config * config,
+-        struct skippy_model ** out_model,
+-        struct skippy_error ** out_error) {
+-    if (metadata_gguf == nullptr || metadata_gguf_size == 0 || source == nullptr ||
+-        source->abi_version != SKIPPY_MODEL_TENSOR_SOURCE_V1_ABI_VERSION ||
+-        source->struct_size < sizeof(skippy_model_tensor_source_v1) ||
+-        source->read_tensor_f32 == nullptr || out_model == nullptr) {
+-        skippy_set_error(out_error, SKIPPY_STATUS_INVALID_ARGUMENT, "valid metadata, tensor source, and out_model are required");
+-        return SKIPPY_STATUS_INVALID_ARGUMENT;
+-    }
+-    *out_model = nullptr;
+-    if (skippy_runtime_has_stage_plan(config) &&
+-        (config->layer_start < 0 || config->layer_start >= config->layer_end)) {
+-        skippy_set_error(out_error, SKIPPY_STATUS_INVALID_ARGUMENT, "layer_start must be non-negative and less than layer_end");
+-        return SKIPPY_STATUS_INVALID_ARGUMENT;
+-    }
+-    if (skippy_runtime_has_stage_plan(config) &&
+-            (config->execution_contract == nullptr || config->execution_contract[0] == '\0')) {
+-        skippy_set_error(out_error, SKIPPY_STATUS_INVALID_ARGUMENT,
+-                "filtered stage loading requires an admitted execution contract");
+-        return SKIPPY_STATUS_INVALID_ARGUMENT;
+-    }
+-    skippy_imatrix_map imatrix;
+-    std::vector<llama_model_imatrix_data> native_imatrix;
+-    std::string imatrix_error;
+-    if (!skippy_build_imatrix(source, imatrix, native_imatrix, imatrix_error)) {
+-        skippy_set_error(out_error, SKIPPY_STATUS_INVALID_ARGUMENT, imatrix_error.c_str());
+-        return SKIPPY_STATUS_INVALID_ARGUMENT;
+-    }
+-
+-    ggml_context * tensor_context = nullptr;
+-    gguf_init_params init_params = { true, &tensor_context };
+-    gguf_context * metadata = gguf_init_from_buffer(metadata_gguf, metadata_gguf_size, init_params);
+-    if (metadata == nullptr || tensor_context == nullptr) {
+-        if (tensor_context != nullptr) {
+-            ggml_free(tensor_context);
+-        }
+-        if (metadata != nullptr) {
+-            gguf_free(metadata);
+-        }
+-        skippy_set_error(out_error, SKIPPY_STATUS_MODEL_ERROR, "failed to parse metadata-only GGUF");
+-        return SKIPPY_STATUS_MODEL_ERROR;
+-    }
+-
+-    std::string quant_error;
+-    const llama_model_imatrix_data * native_imatrix_ptr =
+-            source->imatrix_count > 0 ? native_imatrix.data() : nullptr;
+-    if (!skippy_apply_source_quantization(
+-                metadata,
+-                tensor_context,
+-                quantization_ftype,
+-                imatrix,
+-                native_imatrix_ptr,
+-                quant_error)) {
+-        ggml_free(tensor_context);
+-        gguf_free(metadata);
+-        skippy_set_error(out_error, SKIPPY_STATUS_MODEL_ERROR, quant_error.c_str());
+-        return SKIPPY_STATUS_MODEL_ERROR;
+-    }
+-
+-    llama_model_params params = llama_model_default_params();
+-    params.load_mtp = config != nullptr && skippy_runtime_is_terminal_stage(config) &&
+-                      (skippy_runtime_has_stage_plan(config) || config->mtp_source == SKIPPY_MTP_SOURCE_INTEGRATED);
+-    skippy_tensor_placement_storage tensor_placement;
+-    if (config != nullptr) {
+-        params.n_gpu_layers = config->n_gpu_layers;
+-        skippy_apply_model_load_memory_config(config, params);
+-        skippy_apply_host_expert_placement(config, params, tensor_placement);
+-    }
+-    llama_backend_init();
+-    if (!ggml_backend_reg_count()) {
+-        ggml_backend_load_all();
+-    }
+-    std::vector<ggml_backend_dev_t> selected_devices;
+-    const skippy_status device_status = skippy_apply_selected_backend_device(
+-            config, params, selected_devices, out_error);
+-    if (device_status != SKIPPY_STATUS_OK) {
+-        ggml_free(tensor_context);
+-        gguf_free(metadata);
+-        return device_status;
+-    }
+-
+-    skippy_model_source_state state = { source, &imatrix, {} };
+-    const auto selection = skippy_source_selection(config);
+-    llama_model * model = llama_model_init_from_user_with_selection(
+-            metadata,
+-            skippy_set_model_tensor_from_source,
+-            &state,
+-            params,
+-            skippy_runtime_has_stage_plan(config) ? &selection : nullptr);
+-    ggml_free(tensor_context);
+-    gguf_free(metadata);
+-    if (model == nullptr) {
+-        const char * message = state.error.empty()
+-                ? "failed to load model from tensor source"
+-                : state.error.c_str();
+-        skippy_set_error(out_error, SKIPPY_STATUS_MODEL_ERROR, message);
+-        return SKIPPY_STATUS_MODEL_ERROR;
+-    }
+-    return skippy_finish_model_open(model, config, nullptr, out_model, out_error);
+-}
+-
+-enum skippy_status skippy_model_open_from_source(
+-        const void * metadata_gguf,
+-        size_t metadata_gguf_size,
+-        const struct skippy_model_tensor_source_v1 * source,
+-        int32_t quantization_ftype,
+-        const struct skippy_runtime_config * config,
+-        struct skippy_model ** out_model,
+-        struct skippy_error ** out_error) {
+-    try {
+-        return skippy_model_open_from_source_impl(
+-                metadata_gguf,
+-                metadata_gguf_size,
+-                source,
+-                quantization_ftype,
+-                config,
+-                out_model,
+-                out_error);
+-    } catch (const std::exception & exception) {
+-        if (out_model != nullptr) {
+-            *out_model = nullptr;
+-        }
+-        skippy_set_error(out_error, SKIPPY_STATUS_RUNTIME_ERROR, exception.what());
+-        return SKIPPY_STATUS_RUNTIME_ERROR;
+-    } catch (...) {
+-        if (out_model != nullptr) {
+-            *out_model = nullptr;
+-        }
+-        skippy_set_error(out_error, SKIPPY_STATUS_RUNTIME_ERROR, "unexpected failure while loading callback tensor source");
+-        return SKIPPY_STATUS_RUNTIME_ERROR;
+-    }
+-}

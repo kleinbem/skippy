@@ -1,0 +1,15 @@
+[package]
+name = "skippy-tokenizer"
+edition.workspace = true
+license.workspace = true
+publish = false
+version.workspace = true
+description = "Model-bound tokenizer capability contract for Skippy consumers"
+repository = "https://github.com/Mesh-LLM/skippy"
+homepage = "https://github.com/Mesh-LLM/skippy"
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

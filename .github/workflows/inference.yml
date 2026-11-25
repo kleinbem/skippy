@@ -1,0 +1,278 @@
+name: Inference qualification
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    paths:
+      - 'crates/**'
+      - 'skippy_api/src/**'
+      - 'skippy_api/include/**'
+      - 'skippy_api/CMakeLists.txt'
+      - 'llama_cpp/upstream.txt'
+      - 'llama_cpp/whisper-upstream.txt'
+      - 'llama_cpp/patches/**'
+      - 'tools/process-supervision/**'
+      - 'scripts/automation-run.sh'
+      - 'scripts/inference-*.py'
+      - 'scripts/lib/inference_*.py'
+      - 'scripts/lib/jy_qualification.py'
+      - 'scripts/lib/ci_artifacts.py'
+      - 'scripts/lib/ci_process.py'
+      - 'scripts/artifact-file.sh'
+      - 'scripts/build-llama.sh'
+      - 'scripts/prepare-llama.sh'
+      - 'scripts/prepare-whisper.sh'
+      - 'scripts/cargo-linker*'
+      - 'scripts/lib/cuda-toolkit.sh'
+      - 'scripts/lib/lld.sh'
+      - 'scripts/lib/macos-deployment-target*'
+      - '.gi/templates.yaml'
+      - 'ci/inference-ladder.json'
+      - 'ci/inference-artifacts.json'
+      - 'ci/inference-quality.json'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.cargo/**'
+      - 'rust-toolchain.toml'
+      - 'Justfile'
+      - '!**/*.md'
+      - '!**/*.mdx'
+      - '!**/*.rst'
+      - '!**/*.adoc'
+      - '!**/docs/**'
+      - '!**/tests/**'
+      - '!**/benches/**'
+      - '!**/examples/**'
+      - '!**/fuzz/**'
+      - '!**/tests.rs'
+      - '!**/*_tests.rs'
+      - '!**/tests_*.rs'
+      - '!**/test_support.rs'
+      - '!crates/llama-spec-bench/**'
+      - '!crates/metrics-server/**'
+      - '!crates/skippy-gpu-bench/**'
+      - '!crates/skippy-package-builder/**'
+      - '!crates/skippy-quantize/**'
+      - '!crates/skippy-correctness/**'
+      - '!scripts/inference-render-report.py'
+      - '!scripts/lib/inference_markdown.py'
+      - '!scripts/lib/inference_charts.py'
+      - '!scripts/lib/inference_png.py'
+  schedule:
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+    inputs:
+      profile:
+        type: choice
+        options: [pr, nightly, release]
+        default: pr
+  workflow_call:
+    inputs:
+      release_candidate:
+        description: Exact version commit staged by the protected Release workflow.
+        type: string
+        default: ''
+    secrets:
+      JIANYANG_INFERENCE_SSH_KEY:
+        required: true
+      HF_TOKEN:
+        description: Hugging Face write token used only by the protected scheduled publisher.
+        required: false
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+concurrency:
+  group: inference-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+jobs:
+  plan:
+    # PR qualification is manual: it runs only when the `qualify` label is
+    # present, so atomic Spark pairs are reserved on request rather than by
+    # every inference-path push. The workflow still triggers on path matches
+    # so an intentionally skipped run satisfies the PR checks aggregate.
+    if: >-
+      github.event_name != 'pull_request_target' ||
+      contains(github.event.pull_request.labels.*.name, 'qualify')
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 20
+    outputs:
+      source: ${{ steps.admission.outputs.source || github.event.pull_request.head.sha || github.sha }}
+      profile: ${{ steps.admission.outputs.profile || 'pr' }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      # Credentialed controller source always comes from protected main.
+      # Candidate source is never checked out or executed by this workflow.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event_name == 'schedule' && github.sha || 'main' }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - id: admission
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFICATION_PROFILE: ${{ inputs.profile || 'release' }}
+          RELEASE_CANDIDATE: ${{ inputs.release_candidate }}
+        run: just inference-admit
+      - id: matrix
+        env:
+          SOURCE_SHA: ${{ steps.admission.outputs.source }}
+          PROFILE: ${{ steps.admission.outputs.profile }}
+          NIGHTLY_PUBLICATION: ${{ github.event_name == 'schedule' && github.ref == 'refs/heads/main' && github.repository == 'Mesh-LLM/skippy' }}
+        run: |
+          flags=()
+          if [[ "$NIGHTLY_PUBLICATION" == true ]]; then flags+=(--include-smoke); fi
+          just inference-matrix "$PROFILE" "$SOURCE_SHA" "${flags[@]}"
+  qualification:
+    name: qualification (${{ matrix.id }})
+    needs: plan
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    timeout-minutes: ${{ matrix.profile == 'pr' && 100 || 360 }}
+    env:
+      EVIDENCE: target/ci-evidence/inference-${{ matrix.id }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event_name == 'schedule' && github.sha || 'main' }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Dispatch and await native Spark qualification
+        env:
+          SOURCE_SHA: ${{ needs.plan.outputs.source }}
+          PROFILE: ${{ matrix.profile }}
+          CONFIGURATION: ${{ matrix.configuration }}
+          NIGHTLY_PUBLICATION: ${{ github.event_name == 'schedule' && github.ref == 'refs/heads/main' && github.repository == 'Mesh-LLM/skippy' }}
+          JIANYANG_INFERENCE_SSH_KEY: ${{ secrets.JIANYANG_INFERENCE_SSH_KEY }}
+        run: |
+          flags=()
+          if [[ "$NIGHTLY_PUBLICATION" == true ]]; then flags+=(--collect-public); fi
+          just inference-dispatch "$PROFILE" "$SOURCE_SHA" "$EVIDENCE" "$CONFIGURATION" "${flags[@]}"
+      - name: Cancel outstanding JY jobs and formations
+        if: cancelled() || failure()
+        env:
+          JIANYANG_INFERENCE_SSH_KEY: ${{ secrets.JIANYANG_INFERENCE_SSH_KEY }}
+        run: |
+          if test -f "$EVIDENCE/jobs.json"; then
+            just inference-cancel "$EVIDENCE/jobs.json"
+          fi
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: inference-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 30
+  nightly_publish:
+    name: Publish nightly qualification
+    needs: [plan, qualification]
+    if: >-
+      always() && !cancelled() && github.event_name == 'schedule' &&
+      github.repository == 'Mesh-LLM/skippy' && github.ref == 'refs/heads/main' &&
+      needs.plan.result == 'success'
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        continue-on-error: true
+        with:
+          pattern: inference-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/ci-evidence/nightly-inference
+      - name: Prepare reporting dependencies
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/inference-publication"
+          "$RUNNER_TEMP/inference-publication/bin/python" -m pip install --requirement ci/inference-publish-requirements.txt
+          started=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT" \
+            --jq '.run_started_at')
+          printf 'RUN_STARTED_AT=%s\n' "$started" >> "$GITHUB_ENV"
+      - name: Compare against saved baselines and publish the public report
+        env:
+          SOURCE_SHA: ${{ needs.plan.outputs.source }}
+          MATRIX_RESULT: ${{ needs.qualification.result }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_HUB_DISABLE_PROGRESS_BARS: '1'
+        run: |
+          SKIPPY_PYTHON="$RUNNER_TEMP/inference-publication/bin/python" \
+            just inference-publish-nightly target/ci-evidence/nightly-inference
+  summary:
+    needs: [plan, qualification, nightly_publish]
+    if: always()
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 5
+    steps:
+      - name: Publish the source-bound qualification result
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source || github.event.pull_request.head.sha || github.sha }}
+          PLAN: ${{ needs.plan.result }}
+          RESULT: ${{ needs.qualification.result }}
+          PUBLICATION: ${{ needs.nightly_publish.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const { SOURCE_SHA: sha, PLAN: plan, RESULT: result, PUBLICATION: publication, RUN_URL: url } = process.env;
+            if (!/^[a-f0-9]{40}$/i.test(sha)) throw new Error('Invalid qualification source SHA');
+            // A skipped plan is an intentional opt-out: the PR carries no
+            // qualify label, so no Spark pair was reserved. Report it green
+            // instead of failing unlabeled PRs.
+            const skipped = plan === 'skipped';
+            const nightly = context.eventName === 'schedule';
+            const passed = plan === 'success' && result === 'success' &&
+              (!nightly || publication === 'success');
+            const description = passed
+              ? 'Native Spark lab qualification'
+              : skipped
+              ? 'Intentionally skipped (no qualify label)'
+              : nightly
+              ? 'Nightly qualification or publication incomplete or failed'
+              : 'Inference admission or qualification incomplete or failed';
+            await github.rest.repos.createCommitStatus({
+              ...context.repo, sha, context: 'Inference qualification',
+              state: passed || skipped ? 'success' : 'failure', description, target_url: url
+            });
+            if (!passed && !skipped) core.setFailed(description);
+
+  report:
+    needs: [plan, qualification, summary]
+    if: always() && github.event_name == 'pull_request_target' && needs.plan.result == 'success'
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Collect controller receipts when available
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        continue-on-error: true
+        with:
+          pattern: inference-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/inference-comment
+          merge-multiple: true
+      - name: Update the PR results comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source || github.event.pull_request.head.sha }}
+          PLAN: ${{ needs.plan.result }}
+          REQUIRED: 'true'
+          RESULT: ${{ needs.qualification.result }}
+        run: bash scripts/inference-report.sh target/inference-comment

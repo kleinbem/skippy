@@ -1,0 +1,14 @@
+[package]
+name = "skippy-package-format"
+edition.workspace = true
+license.workspace = true
+publish = false
+version.workspace = true
+description = "Shared, validated Skippy model package format contracts"
+repository = "https://github.com/Mesh-LLM/skippy"
+homepage = "https://github.com/Mesh-LLM/skippy"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true

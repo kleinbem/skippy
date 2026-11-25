@@ -1,0 +1,261 @@
+name: Llama upgrade
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_sha:
+        description: Optional full upstream commit; otherwise select latest published release.
+        type: string
+        default: ''
+      force_check:
+        description: Check the unchanged pin without opening an upgrade PR.
+        type: boolean
+        default: false
+  # Enable after the unchanged-pin and changed-pin acceptance runs in ci/README.md.
+  # schedule:
+  #   - cron: '17 3 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: skippy-llama-upgrade
+  cancel-in-progress: false
+env:
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_PROFILE_RELEASE_DEBUG: '0'
+  CARGO_PROFILE_BENCH_DEBUG: '0'
+  SCCACHE_GHA_ENABLED: 'true'
+  SKIPPY_REQUIRE_SCCACHE: '1'
+jobs:
+  candidate:
+    if: github.ref == 'refs/heads/main'
+    runs-on:
+      group: jy-rnr_vfnz8k5p4yrh334
+      labels: [self-hosted, jy-linux-docker, Linux, X64]
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      pull-requests: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_BUILD_JOBS: '4'
+      CMAKE_BUILD_PARALLEL_LEVEL: '4'
+      SKIPPY_REWRITER_LLVM_PREFIX: /usr/lib/llvm-22
+      LIBCLANG_PATH: /usr/lib/llvm-22/lib
+      GOOSE_MODE: auto
+      GOOSE_DISABLE_SESSION_NAMING: 'true'
+      SKIPPY_UPGRADE_REPAIR_COMMAND: ${{ vars.SKIPPY_UPGRADE_REPAIR_COMMAND || '["goose","run","--no-session","--with-builtin","developer","--text"]' }}
+    outputs:
+      changed: ${{ steps.resolve.outputs.changed }}
+      validate: ${{ steps.resolve.outputs.validate }}
+      candidate_sha: ${{ steps.prepare.outputs.candidate_sha }}
+      upstream_sha: ${{ steps.resolve.outputs.upstream_sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+      - name: Install pinned GitHub CLI
+        run: |
+          bash scripts/install-gh.sh "$RUNNER_TEMP/skippy-gh"
+          echo "$RUNNER_TEMP/skippy-gh" >> "$GITHUB_PATH"
+      - name: Resolve immutable upstream source
+        id: resolve
+        env:
+          UPSTREAM_SHA: ${{ inputs.upstream_sha }}
+          FORCE_CHECK: ${{ inputs.force_check || false }}
+          GH_TOKEN: ${{ github.token }}
+        run: just automation-run upgrade resolve --upstream "$UPSTREAM_SHA" --force-check "$FORCE_CHECK"
+      - name: Check JY native tools and repair agent
+        if: steps.resolve.outputs.validate == 'true'
+        run: just automation-run upgrade runner-check
+      - uses: ./.github/actions/cache
+        if: steps.resolve.outputs.validate == 'true'
+        with:
+          scope: upgrade-candidate-jy-llvm22
+          download-scope: upgrade-candidate
+      - uses: ./.github/actions/sccache
+        id: compiler_cache
+        if: steps.resolve.outputs.validate == 'true'
+        with:
+          scope: upgrade-candidate-jy-${{ runner.os }}-${{ runner.arch }}-llvm22
+      - name: Prepare and freeze candidate
+        id: prepare
+        if: steps.resolve.outputs.validate == 'true'
+        env:
+          UPSTREAM_SHA: ${{ steps.resolve.outputs.upstream_sha }}
+        run: just automation-run upgrade prepare "$UPSTREAM_SHA"
+      - uses: ./.github/actions/report-sccache
+        if: ${{ !cancelled() && steps.compiler_cache.outcome == 'success' }}
+        with:
+          artifact-prefix: llama-candidate-preparation
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: steps.prepare.outcome == 'success'
+        with:
+          name: llama-initial-candidate
+          path: |
+            target/llama-upgrade/candidate.bundle
+            target/llama-upgrade/candidate.json
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: failure()
+        with:
+          name: llama-preparation-diagnostics
+          path: |
+            target/llama-upgrade/evidence/**
+            target/llama-upgrade/candidate.json
+            target/llama-upgrade/candidate.bundle
+            target/llama-upgrade/diagnostics/**
+          if-no-files-found: ignore
+          retention-days: 14
+  qualify:
+    needs: candidate
+    if: needs.candidate.outputs.validate == 'true'
+    permissions:
+      contents: read
+      packages: read
+      actions: read
+      pull-requests: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      candidate_sha: ${{ needs.candidate.outputs.candidate_sha }}
+      candidate_artifact: llama-initial-candidate
+      artifact_scope: upgrade-initial
+      profile: full
+  repair:
+    permissions:
+      contents: read
+      actions: read
+    needs: [candidate, qualify]
+    if: >-
+      !cancelled() && needs.candidate.result == 'success' &&
+      needs.candidate.outputs.validate == 'true' && needs.qualify.result == 'failure'
+    runs-on:
+      group: jy-rnr_vfnz8k5p4yrh334
+      labels: [self-hosted, jy-linux-docker, Linux, X64]
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 180
+    outputs:
+      candidate_sha: ${{ steps.prepare.outputs.candidate_sha }}
+    env:
+      CARGO_BUILD_JOBS: '4'
+      CMAKE_BUILD_PARALLEL_LEVEL: '4'
+      SKIPPY_REWRITER_LLVM_PREFIX: /usr/lib/llvm-22
+      LIBCLANG_PATH: /usr/lib/llvm-22/lib
+      GOOSE_MODE: auto
+      GOOSE_DISABLE_SESSION_NAMING: 'true'
+      SKIPPY_UPGRADE_REPAIR_COMMAND: ${{ vars.SKIPPY_UPGRADE_REPAIR_COMMAND || '["goose","run","--no-session","--with-builtin","developer","--text"]' }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+      - name: Install pinned GitHub CLI
+        run: |
+          bash scripts/install-gh.sh "$RUNNER_TEMP/skippy-gh"
+          echo "$RUNNER_TEMP/skippy-gh" >> "$GITHUB_PATH"
+      - name: Check JY native tools and repair agent
+        run: just automation-run upgrade runner-check
+      - uses: ./.github/actions/cache
+        with:
+          scope: upgrade-candidate-jy-llvm22
+          download-scope: upgrade-candidate
+      - uses: ./.github/actions/sccache
+        id: compiler_cache
+        with:
+          scope: upgrade-candidate-jy-${{ runner.os }}-${{ runner.arch }}-llvm22
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: llama-initial-candidate
+          path: target/llama-repair/candidate
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: '*-evidence'
+          path: target/llama-repair/diagnostics
+      - name: Collect failed Actions job logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: just automation-run upgrade diagnostics target/llama-repair/diagnostics
+      - name: Repair failed candidate and prepare a fresh bundle
+        id: prepare
+        env:
+          UPSTREAM_SHA: ${{ needs.candidate.outputs.upstream_sha }}
+        run: >-
+          just automation-run upgrade prepare "$UPSTREAM_SHA"
+          --repair-bundle target/llama-repair/candidate/candidate.bundle --diagnostics target/llama-repair/diagnostics
+      - uses: ./.github/actions/report-sccache
+        if: ${{ !cancelled() && steps.compiler_cache.outcome == 'success' }}
+        with:
+          artifact-prefix: llama-repaired-preparation
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: llama-repaired-candidate
+          path: |
+            target/llama-upgrade/candidate.bundle
+            target/llama-upgrade/candidate.json
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: failure()
+        with:
+          name: llama-repair-diagnostics
+          path: target/llama-upgrade/diagnostics
+          if-no-files-found: warn
+  requalify:
+    needs: [candidate, repair]
+    if: ${{ !cancelled() && needs.repair.result == 'success' }}
+    permissions:
+      contents: read
+      packages: read
+      actions: read
+      pull-requests: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      candidate_sha: ${{ needs.repair.outputs.candidate_sha }}
+      candidate_artifact: llama-repaired-candidate
+      artifact_scope: upgrade-repaired
+      profile: full
+  publish:
+    needs: [candidate, qualify, repair, requalify]
+    if: >-
+      !cancelled() && needs.candidate.outputs.changed == 'true' &&
+      (needs.qualify.result == 'success' || needs.requalify.result == 'success')
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    env:
+      CANDIDATE_ARTIFACT: ${{ needs.qualify.result == 'success' && 'llama-initial-candidate' || 'llama-repaired-candidate' }}
+      VALIDATED_SHA: ${{ needs.qualify.result == 'success' && needs.candidate.outputs.candidate_sha || needs.repair.outputs.candidate_sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ${{ env.CANDIDATE_ARTIFACT }}
+          path: candidate
+      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        id: app
+        with:
+          app-id: ${{ vars.SKIPPY_UPGRADE_APP_ID }}
+          private-key: ${{ secrets.SKIPPY_UPGRADE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: skippy
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Publish exact verified candidate as a PR
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: just automation-run upgrade publish --candidate candidate/candidate.bundle --validated-sha "$VALIDATED_SHA"

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "purpose": "Settings for existing synthetic regression cases. Uncovered architectures and builders are reported without blocking upgrades; no model weights are required.",
+  "case_modes": {
+    "gemma3n": "shared-kv-18",
+    "gemma4": "shared-kv-22",
+    "granite-switch": "causal-tokens",
+    "t5-encoder-decoder": "encoder-decoder-rejection"
+  },
+  "additional_case_sources": {
+    "skippy_generate_contract_glm53_synthetic": [
+      "src/models/glm-dsa.cpp"
+    ],
+    "skippy_generate_contract_glm5_next_synthetic": [
+      "src/models/glm5-next.cpp"
+    ]
+  }
+}

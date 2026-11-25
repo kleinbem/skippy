@@ -1,0 +1,935 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "name": "Native Spark inference qualification",
+      "group": "Inference",
+      "target": {
+        "executor": "lab",
+        "selector": {
+          "os": {
+            "family": "linux"
+          },
+          "arch": {
+            "in": [
+              "aarch64"
+            ]
+          },
+          "accelerator": {
+            "backend": "cuda",
+            "model": {
+              "in": [
+                "NVIDIA GB10"
+              ]
+            }
+          },
+          "memory": {
+            "system_gib": {
+              "min": 120
+            }
+          },
+          "network": {
+            "in": [
+              "james-lab",
+              "dan-lab"
+            ]
+          }
+        }
+      },
+      "build": "cd ${repo_dir} && just inference-build",
+      "inputs": [
+        {
+          "key": "profile",
+          "label": "Profile",
+          "kind": "choice",
+          "choices": [
+            {
+              "value": "pr",
+              "label": "pr"
+            },
+            {
+              "value": "nightly",
+              "label": "nightly"
+            },
+            {
+              "value": "release",
+              "label": "release"
+            }
+          ],
+          "default": "pr"
+        },
+        {
+          "key": "model_key",
+          "label": "Model",
+          "kind": "choice",
+          "choices": [
+            {
+              "value": "qwen35-08b",
+              "label": "Qwen/Qwen3.5-0.8B"
+            },
+            {
+              "value": "qwen35-2b",
+              "label": "Qwen/Qwen3.5-2B"
+            },
+            {
+              "value": "qwen35-4b",
+              "label": "Qwen/Qwen3.5-4B"
+            },
+            {
+              "value": "qwen35-9b",
+              "label": "Qwen/Qwen3.5-9B"
+            },
+            {
+              "value": "qwen38-27b",
+              "label": "Qwen/Qwen3.8-27B"
+            },
+            {
+              "value": "qwen3-coder-30b-a3b",
+              "label": "Qwen/Qwen3-Coder-30B-A3B-Instruct"
+            },
+            {
+              "value": "qwen36-35b-a3b",
+              "label": "Qwen/Qwen3.6-35B-A3B"
+            },
+            {
+              "value": "qwen38-flash-next",
+              "label": "Qwen/Qwen3.8-Flash-Next"
+            }
+          ],
+          "default": "qwen35-4b"
+        },
+        {
+          "key": "model",
+          "label": "Model name",
+          "kind": "choice",
+          "choices": [
+            {
+              "value": "Qwen3.5-0.8B",
+              "label": "Qwen/Qwen3.5-0.8B"
+            },
+            {
+              "value": "Qwen3.5-2B",
+              "label": "Qwen/Qwen3.5-2B"
+            },
+            {
+              "value": "Qwen3.5-4B",
+              "label": "Qwen/Qwen3.5-4B"
+            },
+            {
+              "value": "Qwen3.5-9B",
+              "label": "Qwen/Qwen3.5-9B"
+            },
+            {
+              "value": "Qwen3.8-27B",
+              "label": "Qwen/Qwen3.8-27B"
+            },
+            {
+              "value": "Qwen3-Coder-30B-A3B-Instruct",
+              "label": "Qwen/Qwen3-Coder-30B-A3B-Instruct"
+            },
+            {
+              "value": "Qwen3.6-35B-A3B",
+              "label": "Qwen/Qwen3.6-35B-A3B"
+            },
+            {
+              "value": "Qwen3.8-Flash-Next",
+              "label": "Qwen/Qwen3.8-Flash-Next"
+            }
+          ],
+          "default": "Qwen3.5-4B"
+        }
+      ],
+      "budget": {
+        "max_usd": 0,
+        "max_duration_s": 18000,
+        "grace_s": 60
+      },
+      "retain": "never",
+      "key": "inference-standalone",
+      "command": "cd \"$JIANYANG_REPO_DIR\" && just inference-execute ${profile} ${model_key} standalone",
+      "env": {
+        "HF_HOME": "/mnt/model-store/huggingface",
+        "HF_HUB_CACHE": "/mnt/model-store/huggingface/hub"
+      }
+    },
+    {
+      "name": "Native Spark inference qualification",
+      "group": "Inference",
+      "target": {
+        "executor": "lab",
+        "selector": {
+          "os": {
+            "family": "linux"
+          },
+          "arch": {
+            "in": [
+              "aarch64"
+            ]
+          },
+          "accelerator": {
+            "backend": "cuda",
+            "model": {
+              "in": [
+                "NVIDIA GB10"
+              ]
+            }
+          },
+          "memory": {
+            "system_gib": {
+              "min": 120
+            }
+          },
+          "network": {
+            "in": [
+              "james-lab",
+              "dan-lab"
+            ]
+          }
+        }
+      },
+      "build": "cd ${repo_dir} && just inference-build",
+      "inputs": [
+        {
+          "key": "profile",
+          "label": "Profile",
+          "kind": "choice",
+          "choices": [
+            {
+              "value": "pr",
+              "label": "pr"
+            },
+            {
+              "value": "nightly",
+              "label": "nightly"
+            },
+            {
+              "value": "release",
+              "label": "release"
+            }
+          ],
+          "default": "pr"
+        },
+        {
+          "key": "model_key",
+          "label": "Model",
+          "kind": "choice",
+          "choices": [
+            {
+              "value": "qwen35-08b",
+              "label": "Qwen/Qwen3.5-0.8B"
+            },
+            {
+              "value": "qwen35-2b",
+              "label": "Qwen/Qwen3.5-2B"
+            },
+            {
+              "value": "qwen35-4b",
+              "label": "Qwen/Qwen3.5-4B"
+            },
+            {
+              "value": "qwen35-9b",
+              "label": "Qwen/Qwen3.5-9B"
+            },
+            {
+              "value": "qwen38-27b",
+              "label": "Qwen/Qwen3.8-27B"
+            },
+            {
+              "value": "qwen3-coder-30b-a3b",
+              "label": "Qwen/Qwen3-Coder-30B-A3B-Instruct"
+            },
+            {
+              "value": "qwen36-35b-a3b",
+              "label": "Qwen/Qwen3.6-35B-A3B"
+            },
+            {
+              "value": "qwen38-flash-next",
+              "label": "Qwen/Qwen3.8-Flash-Next"
+            }
+          ],
+          "default": "qwen35-4b"
+        },
+        {
+          "key": "model",
+          "label": "Model name",
+          "kind": "choice",
+          "choices": [
+            {
+              "value": "Qwen3.5-0.8B",
+              "label": "Qwen/Qwen3.5-0.8B"
+            },
+            {
+              "value": "Qwen3.5-2B",
+              "label": "Qwen/Qwen3.5-2B"
+            },
+            {
+              "value": "Qwen3.5-4B",
+              "label": "Qwen/Qwen3.5-4B"
+            },
+            {
+              "value": "Qwen3.5-9B",
+              "label": "Qwen/Qwen3.5-9B"
+            },
+            {
+              "value": "Qwen3.8-27B",
+              "label": "Qwen/Qwen3.8-27B"
+            },
+            {
+              "value": "Qwen3-Coder-30B-A3B-Instruct",
+              "label": "Qwen/Qwen3-Coder-30B-A3B-Instruct"
+            },
+            {
+              "value": "Qwen3.6-35B-A3B",
+              "label": "Qwen/Qwen3.6-35B-A3B"
+            },
+            {
+              "value": "Qwen3.8-Flash-Next",
+              "label": "Qwen/Qwen3.8-Flash-Next"
+            }
+          ],
+          "default": "Qwen3.5-4B"
+        },
+        {
+          "key": "leader_node",
+          "label": "leader Spark",
+          "kind": "choice",
+          "default": "spark-000137",
+          "choices": [
+            {
+              "value": "spark-000137",
+              "label": "spark-000137"
+            },
+            {
+              "value": "spark-000265",
+              "label": "spark-000265"
+            },
+            {
+              "value": "spark-000280",
+              "label": "spark-000280"
+            },
+            {
+              "value": "spark-000281",
+              "label": "spark-000281"
+            },
+            {
+              "value": "spark-000464",
+              "label": "spark-000464"
+            },
+            {
+              "value": "spark-000468",
+              "label": "spark-000468"
+            },
+            {
+              "value": "spark-000499",
+              "label": "spark-000499"
+            },
+            {
+              "value": "spark-000586",
+              "label": "spark-000586"
+            },
+            {
+              "value": "spark-000907",
+              "label": "spark-000907"
+            },
+            {
+              "value": "spark-000945",
+              "label": "spark-000945"
+            },
+            {
+              "value": "spark-001095",
+              "label": "spark-001095"
+            },
+            {
+              "value": "spark-001272",
+              "label": "spark-001272"
+            }
+          ]
+        },
+        {
+          "key": "worker_node",
+          "label": "worker Spark",
+          "kind": "choice",
+          "default": "spark-000280",
+          "choices": [
+            {
+              "value": "spark-000137",
+              "label": "spark-000137"
+            },
+            {
+              "value": "spark-000265",
+              "label": "spark-000265"
+            },
+            {
+              "value": "spark-000280",
+              "label": "spark-000280"
+            },
+            {
+              "value": "spark-000281",
+              "label": "spark-000281"
+            },
+            {
+              "value": "spark-000464",
+              "label": "spark-000464"
+            },
+            {
+              "value": "spark-000468",
+              "label": "spark-000468"
+            },
+            {
+              "value": "spark-000499",
+              "label": "spark-000499"
+            },
+            {
+              "value": "spark-000586",
+              "label": "spark-000586"
+            },
+            {
+              "value": "spark-000907",
+              "label": "spark-000907"
+            },
+            {
+              "value": "spark-000945",
+              "label": "spark-000945"
+            },
+            {
+              "value": "spark-001095",
+              "label": "spark-001095"
+            },
+            {
+              "value": "spark-001272",
+              "label": "spark-001272"
+            }
+          ]
+        }
+      ],
+      "budget": {
+        "max_usd": 0,
+        "max_duration_s": 18000,
+        "grace_s": 60
+      },
+      "retain": "never",
+      "key": "inference-split",
+      "command": "cd \"$JIANYANG_REPO_DIR\" && just inference-execute ${profile} ${model_key} split",
+      "roles": [
+        {
+          "name": "leader",
+          "count": 1,
+          "nodes": [
+            "${leader_node}"
+          ]
+        },
+        {
+          "name": "worker",
+          "count": 1,
+          "nodes": [
+            "${worker_node}"
+          ]
+        }
+      ],
+      "rendezvous": {
+        "mode": "peers",
+        "leader_role": "leader",
+        "leader_port": 9400
+      },
+      "env": {
+        "HF_HOME": "/mnt/model-store/huggingface",
+        "HF_HUB_CACHE": "/mnt/model-store/huggingface/hub"
+      }
+    },
+    {
+      "key": "inference-host-preflight",
+      "name": "Inference host prerequisites",
+      "target": {
+        "executor": "lab",
+        "selector": {
+          "os": {
+            "family": "linux"
+          },
+          "arch": {
+            "in": [
+              "aarch64"
+            ]
+          },
+          "accelerator": {
+            "backend": "cuda",
+            "model": {
+              "in": [
+                "NVIDIA GB10"
+              ]
+            }
+          },
+          "memory": {
+            "system_gib": {
+              "min": 120
+            }
+          },
+          "network": {
+            "in": [
+              "james-lab",
+              "dan-lab"
+            ]
+          }
+        }
+      },
+      "build": "",
+      "command": "set -eu\nid\ncommand -v hf uv nvidia-smi\nhf --help\nuv --version\nnvidia-smi --query-gpu=name --format=csv,noheader",
+      "budget": {
+        "max_usd": 0,
+        "max_duration_s": 120
+      },
+      "env": {
+        "HF_HOME": "/mnt/model-store/huggingface",
+        "HF_HUB_CACHE": "/mnt/model-store/huggingface/hub"
+      }
+    },
+    {
+      "key": "native-graph-contracts",
+      "name": "Native synthetic graph contracts",
+      "group": "Contracts",
+      "target": {
+        "executor": "lab",
+        "selector": {
+          "os": {
+            "family": "linux"
+          },
+          "arch": {
+            "in": [
+              "x86_64",
+              "aarch64"
+            ]
+          },
+          "memory": {
+            "system_gib": {
+              "min": 24
+            }
+          }
+        }
+      },
+      "build": "cd ${repo_dir} && just native-contract-build",
+      "command": "cd \"$JIANYANG_REPO_DIR\" && just native-mimo2-contract",
+      "budget": {
+        "max_usd": 0,
+        "max_duration_s": 3600
+      }
+    },
+    {
+      "name": "Short Spark PR inference smoke",
+      "group": "Inference",
+      "target": {
+        "executor": "lab",
+        "selector": {
+          "os": {
+            "family": "linux"
+          },
+          "arch": {
+            "in": [
+              "aarch64"
+            ]
+          },
+          "accelerator": {
+            "backend": "cuda",
+            "model": {
+              "in": [
+                "NVIDIA GB10"
+              ]
+            }
+          },
+          "memory": {
+            "system_gib": {
+              "min": 120
+            }
+          },
+          "network": {
+            "in": [
+              "james-lab",
+              "dan-lab"
+            ]
+          }
+        }
+      },
+      "build": "cd ${repo_dir} && just inference-build",
+      "inputs": [
+        {
+          "key": "profile",
+          "label": "Profile",
+          "kind": "choice",
+          "choices": [
+            {
+              "value": "pr",
+              "label": "pr"
+            }
+          ],
+          "default": "pr"
+        },
+        {
+          "key": "model_key",
+          "label": "Model",
+          "kind": "choice",
+          "choices": [
+            {
+              "value": "qwen35-08b",
+              "label": "Qwen/Qwen3.5-0.8B"
+            },
+            {
+              "value": "qwen35-2b",
+              "label": "Qwen/Qwen3.5-2B"
+            },
+            {
+              "value": "qwen35-4b",
+              "label": "Qwen/Qwen3.5-4B"
+            },
+            {
+              "value": "qwen35-9b",
+              "label": "Qwen/Qwen3.5-9B"
+            },
+            {
+              "value": "qwen38-27b",
+              "label": "Qwen/Qwen3.8-27B"
+            },
+            {
+              "value": "qwen3-coder-30b-a3b",
+              "label": "Qwen/Qwen3-Coder-30B-A3B-Instruct"
+            },
+            {
+              "value": "qwen36-35b-a3b",
+              "label": "Qwen/Qwen3.6-35B-A3B"
+            },
+            {
+              "value": "qwen38-flash-next",
+              "label": "Qwen/Qwen3.8-Flash-Next"
+            }
+          ],
+          "default": "qwen35-4b"
+        },
+        {
+          "key": "model",
+          "label": "Model name",
+          "kind": "choice",
+          "choices": [
+            {
+              "value": "Qwen3.5-0.8B",
+              "label": "Qwen/Qwen3.5-0.8B"
+            },
+            {
+              "value": "Qwen3.5-2B",
+              "label": "Qwen/Qwen3.5-2B"
+            },
+            {
+              "value": "Qwen3.5-4B",
+              "label": "Qwen/Qwen3.5-4B"
+            },
+            {
+              "value": "Qwen3.5-9B",
+              "label": "Qwen/Qwen3.5-9B"
+            },
+            {
+              "value": "Qwen3.8-27B",
+              "label": "Qwen/Qwen3.8-27B"
+            },
+            {
+              "value": "Qwen3-Coder-30B-A3B-Instruct",
+              "label": "Qwen/Qwen3-Coder-30B-A3B-Instruct"
+            },
+            {
+              "value": "Qwen3.6-35B-A3B",
+              "label": "Qwen/Qwen3.6-35B-A3B"
+            },
+            {
+              "value": "Qwen3.8-Flash-Next",
+              "label": "Qwen/Qwen3.8-Flash-Next"
+            }
+          ],
+          "default": "Qwen3.5-4B"
+        }
+      ],
+      "budget": {
+        "max_usd": 0,
+        "max_duration_s": 1800,
+        "grace_s": 60
+      },
+      "retain": "never",
+      "key": "inference-pr-standalone",
+      "command": "cd \"$JIANYANG_REPO_DIR\" && just inference-execute ${profile} ${model_key} standalone",
+      "env": {
+        "HF_HOME": "/mnt/model-store/huggingface",
+        "HF_HUB_CACHE": "/mnt/model-store/huggingface/hub"
+      }
+    },
+    {
+      "name": "Short Spark PR inference smoke",
+      "group": "Inference",
+      "target": {
+        "executor": "lab",
+        "selector": {
+          "os": {
+            "family": "linux"
+          },
+          "arch": {
+            "in": [
+              "aarch64"
+            ]
+          },
+          "accelerator": {
+            "backend": "cuda",
+            "model": {
+              "in": [
+                "NVIDIA GB10"
+              ]
+            }
+          },
+          "memory": {
+            "system_gib": {
+              "min": 120
+            }
+          },
+          "network": {
+            "in": [
+              "james-lab",
+              "dan-lab"
+            ]
+          }
+        }
+      },
+      "build": "cd ${repo_dir} && just inference-build",
+      "inputs": [
+        {
+          "key": "profile",
+          "label": "Profile",
+          "kind": "choice",
+          "choices": [
+            {
+              "value": "pr",
+              "label": "pr"
+            }
+          ],
+          "default": "pr"
+        },
+        {
+          "key": "model_key",
+          "label": "Model",
+          "kind": "choice",
+          "choices": [
+            {
+              "value": "qwen35-08b",
+              "label": "Qwen/Qwen3.5-0.8B"
+            },
+            {
+              "value": "qwen35-2b",
+              "label": "Qwen/Qwen3.5-2B"
+            },
+            {
+              "value": "qwen35-4b",
+              "label": "Qwen/Qwen3.5-4B"
+            },
+            {
+              "value": "qwen35-9b",
+              "label": "Qwen/Qwen3.5-9B"
+            },
+            {
+              "value": "qwen38-27b",
+              "label": "Qwen/Qwen3.8-27B"
+            },
+            {
+              "value": "qwen3-coder-30b-a3b",
+              "label": "Qwen/Qwen3-Coder-30B-A3B-Instruct"
+            },
+            {
+              "value": "qwen36-35b-a3b",
+              "label": "Qwen/Qwen3.6-35B-A3B"
+            },
+            {
+              "value": "qwen38-flash-next",
+              "label": "Qwen/Qwen3.8-Flash-Next"
+            }
+          ],
+          "default": "qwen35-4b"
+        },
+        {
+          "key": "model",
+          "label": "Model name",
+          "kind": "choice",
+          "choices": [
+            {
+              "value": "Qwen3.5-0.8B",
+              "label": "Qwen/Qwen3.5-0.8B"
+            },
+            {
+              "value": "Qwen3.5-2B",
+              "label": "Qwen/Qwen3.5-2B"
+            },
+            {
+              "value": "Qwen3.5-4B",
+              "label": "Qwen/Qwen3.5-4B"
+            },
+            {
+              "value": "Qwen3.5-9B",
+              "label": "Qwen/Qwen3.5-9B"
+            },
+            {
+              "value": "Qwen3.8-27B",
+              "label": "Qwen/Qwen3.8-27B"
+            },
+            {
+              "value": "Qwen3-Coder-30B-A3B-Instruct",
+              "label": "Qwen/Qwen3-Coder-30B-A3B-Instruct"
+            },
+            {
+              "value": "Qwen3.6-35B-A3B",
+              "label": "Qwen/Qwen3.6-35B-A3B"
+            },
+            {
+              "value": "Qwen3.8-Flash-Next",
+              "label": "Qwen/Qwen3.8-Flash-Next"
+            }
+          ],
+          "default": "Qwen3.5-4B"
+        },
+        {
+          "key": "leader_node",
+          "label": "leader Spark",
+          "kind": "choice",
+          "default": "spark-000137",
+          "choices": [
+            {
+              "value": "spark-000137",
+              "label": "spark-000137"
+            },
+            {
+              "value": "spark-000265",
+              "label": "spark-000265"
+            },
+            {
+              "value": "spark-000280",
+              "label": "spark-000280"
+            },
+            {
+              "value": "spark-000281",
+              "label": "spark-000281"
+            },
+            {
+              "value": "spark-000464",
+              "label": "spark-000464"
+            },
+            {
+              "value": "spark-000468",
+              "label": "spark-000468"
+            },
+            {
+              "value": "spark-000499",
+              "label": "spark-000499"
+            },
+            {
+              "value": "spark-000586",
+              "label": "spark-000586"
+            },
+            {
+              "value": "spark-000907",
+              "label": "spark-000907"
+            },
+            {
+              "value": "spark-000945",
+              "label": "spark-000945"
+            },
+            {
+              "value": "spark-001095",
+              "label": "spark-001095"
+            },
+            {
+              "value": "spark-001272",
+              "label": "spark-001272"
+            }
+          ]
+        },
+        {
+          "key": "worker_node",
+          "label": "worker Spark",
+          "kind": "choice",
+          "default": "spark-000280",
+          "choices": [
+            {
+              "value": "spark-000137",
+              "label": "spark-000137"
+            },
+            {
+              "value": "spark-000265",
+              "label": "spark-000265"
+            },
+            {
+              "value": "spark-000280",
+              "label": "spark-000280"
+            },
+            {
+              "value": "spark-000281",
+              "label": "spark-000281"
+            },
+            {
+              "value": "spark-000464",
+              "label": "spark-000464"
+            },
+            {
+              "value": "spark-000468",
+              "label": "spark-000468"
+            },
+            {
+              "value": "spark-000499",
+              "label": "spark-000499"
+            },
+            {
+              "value": "spark-000586",
+              "label": "spark-000586"
+            },
+            {
+              "value": "spark-000907",
+              "label": "spark-000907"
+            },
+            {
+              "value": "spark-000945",
+              "label": "spark-000945"
+            },
+            {
+              "value": "spark-001095",
+              "label": "spark-001095"
+            },
+            {
+              "value": "spark-001272",
+              "label": "spark-001272"
+            }
+          ]
+        }
+      ],
+      "budget": {
+        "max_usd": 0,
+        "max_duration_s": 1800,
+        "grace_s": 60
+      },
+      "retain": "never",
+      "key": "inference-pr-split",
+      "command": "cd \"$JIANYANG_REPO_DIR\" && just inference-execute ${profile} ${model_key} split",
+      "roles": [
+        {
+          "name": "leader",
+          "count": 1,
+          "nodes": [
+            "${leader_node}"
+          ]
+        },
+        {
+          "name": "worker",
+          "count": 1,
+          "nodes": [
+            "${worker_node}"
+          ]
+        }
+      ],
+      "rendezvous": {
+        "mode": "peers",
+        "leader_role": "leader",
+        "leader_port": 9400
+      },
+      "env": {
+        "HF_HOME": "/mnt/model-store/huggingface",
+        "HF_HUB_CACHE": "/mnt/model-store/huggingface/hub"
+      }
+    }
+  ]
+}

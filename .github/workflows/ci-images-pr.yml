@@ -1,0 +1,15 @@
+name: CI images PR
+on:
+  pull_request:
+    paths: ['.github/workflows/ci-images.yml', '.github/workflows/ci-images-pr.yml', '.github/workflows/ci-image-builds.yml', 'ci/image-targets.json', 'ci/Dockerfile*', 'ci/targets.json', 'scripts/ci-preserve-cuda-license.sh', 'rust-toolchain.toml', 'ci/images.just']
+jobs:
+  validation:
+    if: >-
+      github.repository == 'Mesh-LLM/skippy' && vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true'
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+      pull-requests: read
+    cache-mode: none
+    uses: Mesh-LLM/skippy/.github/workflows/ci.yml@main

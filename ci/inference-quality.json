@@ -1,0 +1,6 @@
+[
+
+ {"id":"arithmetic","prompt":"What is 17 + 25? Reply with only the integer.","expected":"42"},
+ {"id":"json","prompt":"Return exactly this JSON, with no Markdown or explanation: {\"ok\":true}","expected":"{\"ok\":true}"},
+ {"id":"code","prompt":"Write exactly one line of Python assigning the integer 3 to the variable result. Use one space around the equals sign. No Markdown or explanation.","expected":"result = 3"}
+]

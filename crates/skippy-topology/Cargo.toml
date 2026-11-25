@@ -1,0 +1,13 @@
+[package]
+name = "skippy-topology"
+edition.workspace = true
+license.workspace = true
+publish = false
+version.workspace = true
+description = "Topology planning types for Skippy staged runtime execution"
+repository = "https://github.com/Mesh-LLM/skippy"
+homepage = "https://github.com/Mesh-LLM/skippy"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

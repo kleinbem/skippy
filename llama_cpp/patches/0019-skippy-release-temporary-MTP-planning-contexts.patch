@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Skippy CI <ci@generalinference.dev>
+Date: Tue, 17 Nov 2026 22:23:21 +1100
+Subject: [PATCH] skippy: release temporary MTP planning contexts
+
+---
+ src/skippy/stage_plan.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/skippy/stage_plan.cpp b/src/skippy/stage_plan.cpp
+index 380e1eaad..0c4ab443b 100644
+--- a/src/skippy/stage_plan.cpp
++++ b/src/skippy/stage_plan.cpp
+@@ -402,7 +402,9 @@ bool add_mtp_profiles(
+                     std::to_string(nextn_layer_offset);
+             plan.guarded.auxiliary_profiles.push_back({auxiliary_profile_id, auxiliary.graph_identity, auxiliary.parameter_identities, nextn_layer_offset});
+             residents.insert(auxiliary.parameter_identities.begin(), auxiliary.parameter_identities.end());
+-            plan.contexts.push_back(std::move(context));
++            // Auxiliary contracts own only identities and parameter names. No
++            // graph pointers escape, so release this temporary MTP context now
++            // instead of retaining one per profile and NextN layer in the plan.
+         }
+     }
+     plan.guarded.resident_parameter_identities.assign(residents.begin(), residents.end());
+-- 
+2.54.0 (Apple Git-157)
+

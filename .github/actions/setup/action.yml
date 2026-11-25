@@ -1,0 +1,14 @@
+name: Prepare Skippy command runner
+description: Supply pinned Just, the one missing command on standard hosted images.
+inputs:
+  cache:
+    description: Restore the small command-runner cache; build jobs select their own cache after source admission.
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
+      with:
+        just-version: '1.58.0'
+    - uses: ./.github/actions/cache
+      if: inputs.cache == 'true'

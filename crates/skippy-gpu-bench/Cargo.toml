@@ -1,0 +1,18 @@
+[package]
+name = "skippy-gpu-bench"
+version.workspace = true
+edition = "2024"
+license.workspace = true
+publish = false
+description = "Local GPU bandwidth benchmark helpers for Skippy"
+repository = "https://github.com/Mesh-LLM/skippy"
+homepage = "https://github.com/Mesh-LLM/skippy"
+readme = "README.md"
+
+[dependencies]
+process-supervision = { path = "../../tools/process-supervision" }
+tempfile = "3"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"

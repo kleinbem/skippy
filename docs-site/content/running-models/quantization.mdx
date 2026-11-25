@@ -1,0 +1,105 @@
+---
+title: Quantize a model
+description: Convert model weights to a smaller GGUF with skippy-quantize and serve the result.
+---
+
+# Quantize a model
+
+`skippy-quantize` prepares model weights for local inference. It can quantize
+an F16 or BF16 GGUF to reduce the weight file size and the memory needed to
+load it. Lower precision can affect output quality, so keep the original
+weights for comparison.
+
+## Quantize a GGUF to `Q4_K_M`
+
+Put one model's source GGUF in its own directory. This example uses
+`source/SmolLM2-135M-Instruct-F16.gguf` and writes the result under `quantized/`.
+[Download the example F16 GGUF](https://huggingface.co/unsloth/SmolLM2-135M-Instruct-GGUF/blob/main/SmolLM2-135M-Instruct-F16.gguf)
+
+Use `skippy-quantize` on your `PATH` or substitute its full path. The default
+build needs the libraries from a compatible Skippy native runtime bundle.
+Set `runtime_dir` to the absolute path of the bundle directory containing
+`manifest.json`. This Bash or Zsh example uses `jq` to pass the libraries in
+manifest order. [Build the quantizer](/contributing/#build-the-quantizer)
+
+```bash
+runtime_dir=/path/to/native-runtime
+runtime_args=()
+while IFS= read -r library; do
+  runtime_args+=(--native-runtime-library "$runtime_dir/$library")
+done < <(jq -r '.runtime.libraries[]' "$runtime_dir/manifest.json")
+
+skippy-quantize quantize "${runtime_args[@]}" --no-stage-source \
+  source/SmolLM2-135M-Instruct-F16.gguf \
+  quantized/SmolLM2-135M-Instruct-Q4_K_M.gguf Q4_K_M
+```
+
+The native backend adds a shard suffix even when the output is a single file.
+Load that file in Skippy and try a prompt.
+
+```console
+skippy serve --model-path quantized/SmolLM2-135M-Instruct-Q4_K_M-00001-of-00001.gguf --prompt
+```
+
+## What happens to the model
+
+`quantize` scans the source for a complete GGUF, runs the pinned native
+llama.cpp quantizer in-process, and writes a new GGUF to the output location.
+`Q4_K_M` applies a mixed-precision weight recipe. The settings for live KV
+precision are controlled separately when you serve the model.
+
+The tool records the source, target, and quantization mode in a manifest next
+to the output, then checks the completed output by default. It normally stages
+a copy of the source. `--no-stage-source` reads the local files directly.
+Compare representative prompts against the original model with the same
+request settings to check whether the quantized model meets your needs.
+
+## Start from SafeTensors
+
+For a supported architecture, supply the local checkpoint directory with its
+configuration, tokenizer metadata, and all weight shards. Convert it to an
+F16 GGUF, then use that file as the input to `quantize` above.
+
+```console
+skippy-quantize convert --output-type f16 checkpoint/ source/SmolLM2-135M-Instruct-F16.gguf
+```
+
+Conversion streams tensors into GGUF using the native Rust writer. It requires
+`tokenizer.json` and defaults to one output shard. Check the conversion
+options for supported output precision and shard settings.
+
+## Quantize a multipart GGUF
+
+Keep all source shards in the same directory and pass the first shard. The
+native backend processes the complete shard range in one pass. For example,
+the following writes two output shards and preserves the split layout.
+
+```bash
+skippy-quantize quantize "${runtime_args[@]}" --no-stage-source --keep-split \
+  source/model-00001-of-00002.gguf quantized/model-Q4_K_M.gguf Q4_K_M
+```
+
+Pass `quantized/model-Q4_K_M-00001-of-00002.gguf` to `skippy serve`.
+
+## Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| Runtime fails to load | Pass the libraries from one matching Skippy runtime bundle in the order listed under `runtime.libraries`. Repeat `--native-runtime-library` for each path. |
+| Source file or first shard is ambiguous | Keep a single GGUF or one complete shard set in the source directory. Write quantized output to a separate directory. |
+| A partial split range or `--max-memory` is rejected | The `skippy-abi` backend processes the full model in one pass. Use all source shards and sufficient host memory. |
+| An importance matrix is required | Supply the matching matrix with `--imatrix FILE` or choose a quantization mode supported by the input and available data. |
+| The manifest conflicts with an earlier run | Use a fresh output location when changing the source or quantization recipe. |
+
+## Command reference
+
+| Command or option | Behavior |
+| --- | --- |
+| `skippy-quantize quantize INPUT OUTPUT MODE` | Quantize a local GGUF. GGUF quantization defaults to the `skippy-abi` backend. |
+| `skippy-quantize quantize --help` | List all quantization flags and CLI defaults. |
+| `skippy-quantize list-quants` | List supported whole-model modes, including `Q4_K_M` and `Q8_0`. |
+| `skippy-quantize list-tensor-types` | List GGML types accepted by `--tensor-type` and `--tensor-type-file`. |
+| `--preflight-only` | Check the source, target, manifest, and runtime readiness without quantizing. |
+| `--dry-run` | Print the planned job without writing artifacts. |
+| `skippy-quantize status --manifest FILE` | Inspect a job's recorded output progress. |
+| `skippy-quantize convert --help` | List supported checkpoint conversion options. |

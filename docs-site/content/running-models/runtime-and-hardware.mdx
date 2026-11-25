@@ -1,0 +1,99 @@
+---
+title: Runtime and hardware
+description: Select and inspect CPU, Metal, CUDA, ROCm, and Vulkan runtimes.
+---
+
+# Runtime and hardware
+
+A native runtime bundle contains the backend-specific code that executes an
+admitted model. Skippy selects a bundle for the machine's operating system,
+architecture, accelerator backend, toolkit, and Skippy ABI.
+
+Use CPU for broad compatibility, Metal on supported Apple hardware, and CUDA,
+ROCm, or Vulkan when the installed accelerator and published runtime support
+that backend. Inspect the machine and available bundles before changing a
+serving plan:
+
+```console
+skippy doctor
+skippy runtime list
+skippy runtime list --available
+```
+
+Install the recommended compatible runtime, or name a backend explicitly:
+
+```console
+skippy runtime install
+skippy runtime install metal
+```
+
+Skippy release lanes cover CPU, Metal, CUDA, ROCm, and Vulkan variants where
+published for the target. A backend build is not evidence that the model fits:
+context size, live KV precision, concurrency, runtime workspaces, and other
+processes all consume memory.
+
+The release runtime catalog, `native-runtimes.json`, lists available archives
+and their SHA-256 digests. Runtime installation verifies the downloaded archive
+and checks its runtime manifest against the catalog. Download access depends on
+the release's visibility. For a private release, use an authorized GitHub login
+to download and extract the bundle, then pass `--runtime-bundle` to Skippy.
+The current releases include macOS and Linux bundles. Choose a variant listed
+in the release catalog.
+
+## How runtime selection works
+
+The CLI evaluates installed candidates against the host, backend, release
+metadata, native ABI, and recorded file hashes. An explicitly selected runtime
+bundle still must pass these checks. `skippy doctor` reports rejected
+candidates and the reason they were not selected.
+
+Model weights, live KV state, compute workspaces, and active generation lanes
+share finite device or host memory. Weight quantization only changes the model
+weights. It does not automatically quantize the live KV cache.
+
+## Pin a model to a GPU
+
+Inspect the devices visible to the selected runtime and their stable IDs.
+
+```console
+skippy doctor --device-inventory --output json
+```
+
+Replace `GPU_ID` with a `stable_id` from `device_inventory.physical_gpus` whose
+`visibility` is `selectable`.
+
+```console
+skippy serve --model-path /models/model.gguf --gpu-id GPU_ID --n-gpu-layers -1
+```
+
+Skippy checks estimated model, context, and runtime memory against the chosen
+device's capacity before loading. Explicit pinning requires GPU layer offload,
+a visible GPU with known capacity, and a local model source. Use `--gpu-id`
+without `--device` or a prepared stage config.
+
+If the runtime probe fails, the JSON report includes `device_inventory_issue`.
+Check runtime selection and device visibility before choosing an ID.
+
+When a model fails to fit, first reduce context or concurrency, choose a smaller
+quantization, or select a smaller model. Use [pipeline parallelism](/pipeline-parallelism/)
+when the verified model must be divided across explicit workers.
+
+## Hardware and runtime reference
+
+| Goal | Control |
+| --- | --- |
+| Inspect host and backend support | `skippy doctor` |
+| Inspect stable device IDs, visibility, and capacity | `skippy doctor --device-inventory` |
+| List installed runtimes | `skippy runtime list` |
+| List published compatible runtimes | `skippy runtime list --available` |
+| Install the recommended runtime | `skippy runtime install` |
+| Install a named backend | `skippy runtime install BACKEND` |
+| Select devices | `--device` |
+| Pin a local model to a stable GPU ID | `--gpu-id`, `[execution].gpu_id`, or `SKIPPY_SERVE_GPU_ID` |
+| Control GPU layer placement | `--n-gpu-layers` |
+| Set live KV precision | `--kv-cache-type-k`, `--kv-cache-type-v` |
+| Inspect the resolved launch | `--print-effective-config` |
+
+If selection fails, run `skippy doctor` before installing another bundle. If
+loading fails for memory, reduce context or concurrency before changing the
+runtime.

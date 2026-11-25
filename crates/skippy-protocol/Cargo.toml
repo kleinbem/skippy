@@ -1,0 +1,21 @@
+[package]
+name = "skippy-protocol"
+edition.workspace = true
+license.workspace = true
+publish = false
+version.workspace = true
+description = "Wire protocol types for Skippy staged runtime serving"
+repository = "https://github.com/Mesh-LLM/skippy"
+homepage = "https://github.com/Mesh-LLM/skippy"
+
+[dependencies]
+prost = "0.14"
+serde.workspace = true
+skippy-tokenizer = { path = "../skippy-tokenizer", version = "0.80.0" }
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"

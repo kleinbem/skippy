@@ -1,0 +1,6 @@
+**
+!ci/
+!ci/Dockerfile.gpu
+!rust-toolchain.toml
+!scripts/
+!scripts/ci-preserve-cuda-license.sh

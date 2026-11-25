@@ -1,0 +1,41 @@
+{
+  "name": "skippy-docs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build --webpack",
+    "postbuild": "pagefind --site out --output-path out/_pagefind",
+    "check": "npm run build",
+    "deploy": "npm run build && npm run deploy:prebuilt",
+    "deploy:prebuilt": "cf deploy out",
+    "deploy:prebuilt:beta": "cf deploy out --mode beta"
+  },
+  "dependencies": {
+    "next": "16.4.6",
+    "nextra": "4.6.1",
+    "nextra-theme-docs": "4.6.1",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "cf": "^1.0.0-rc.1",
+    "pagefind": "^1.4.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22.23.0"
+  },
+  "overrides": {
+    "nextra": {
+      "zod": "4.1.12"
+    },
+    "nextra-theme-docs": {
+      "zod": "4.1.12"
+    }
+  }
+}

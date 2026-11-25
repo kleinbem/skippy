@@ -1,0 +1,131 @@
+---
+title: Prompt and KV caching
+description: Reuse prompt state and tune live KV representation.
+---
+
+# Prompt and KV caching
+
+The live KV cache stores attention state for generations currently in progress.
+The prefix cache retains reusable model state after a prefill so a later request
+with the same token prefix can skip repeated work.
+
+Use prefix caching for stable system prompts, tool schemas, long documents,
+and multi-turn conversations. It improves time to first token when requests
+share enough leading tokens to make restoration cheaper than recomputation.
+
+Applications continue to send the complete prompt or conversation. Skippy does
+not perform fuzzy or semantic prompt matching. Reuse ends at the first token
+that differs.
+
+## Set a cache policy
+
+`prefix_cache = "auto"` follows the admitted model-family policy. Automatic
+payload selection uses the loaded graph and native memory exporters so hybrid
+or recurrent models retain all required state. If no complete representation
+is available, prefix reuse is disabled while inference remains available.
+The following settings keep reuse in memory and disable the disk tier.
+
+```toml
+[cache]
+prefix_cache = "auto"
+prefix_cache_budget = "auto"
+prefix_cache_ram = "off"
+kv_cache_disk = "off"
+```
+
+## Control prompt reuse
+
+```toml
+[cache]
+prefix_cache = "on"       # auto, on, off, or record
+prefix_cache_budget = "8GiB"
+prefix_cache_max_entries = 256
+prefix_cache_min_tokens = 512
+prefix_cache_stride_tokens = 128
+prefix_cache_record_limit = 4
+```
+
+Use `record` to populate state without serving hits. `off` disables lookup and
+recording. Exact-state snapshots are indivisible, so one snapshot may exceed a
+configured soft retention target.
+
+## How prefix matching works
+
+Skippy renders and tokenizes the full request, finds the longest compatible
+retained token prefix, restores its admitted model state, then prefills only the
+unmatched suffix. Cache compatibility includes the model and runtime state
+needed to resume inference, not only the prompt text.
+
+A stable application cache key creates a deterministic namespace for related
+requests, but it does not replace prefix comparison. Requests must still carry
+the complete content and matching tokens. See the request guide for examples.
+
+## Choose live KV precision
+
+```toml
+[kv]
+kv_cache_type_k = "q8_0"
+kv_cache_type_v = "q8_0"
+kv_cache_offload = true
+flash_attention = "auto"
+```
+
+Supported explicit live K/V values are `f16`, `q8_0`, and `q4_0`. Quantized V
+requires compatible Flash Attention and model geometry. An incompatible
+explicit choice fails rather than silently changing precision.
+
+## Unified-memory systems
+
+Native resident caching keeps attention cells in the shared KV pool. Hybrid and
+recurrent models also retain immutable checkpoints in a separate, bounded
+host-RAM budget. This works with disk caching disabled. Set `prefix_cache_ram`
+to an IEC size to bound those checkpoints; `off` or an unset value selects the
+1 GiB default. Disable prefix caching itself to retain no checkpoints.
+
+For serialized runtimes on unified-memory systems, set
+`prefix_cache_ram = "off"` to avoid a second copy in the same physical memory.
+With disk caching active, a locally prepared model using lookup and record
+can otherwise get a 256 MiB host-RAM tier when `prefix_cache_ram` is omitted.
+
+Bound finished requests' attention retention with
+`--prefix-cache-retention-tokens` (16,384 by default), and bound entries with
+`--prefix-cache-max-entries`. These limits do not enlarge an individual
+request's context window.
+
+## Shared KV placement
+
+Requests share a unified pool while keeping their own context limits.
+`--kv-pool-tokens` caps the aggregate pool; it must hold at least one full
+request context. Batch-aware placement keeps each request's rows together so
+supported attention kernels can read consecutive runs efficiently.
+
+`--kv-lazy-clear=false` zeroes the pool eagerly.
+`--kv-release-pages=false` keeps freed pages resident, and
+`--kv-row-attention=false` selects ordinary attention. Use these controls for
+matched backend measurements; page-release costs depend on the platform.
+
+## Observe cache behavior
+
+OpenAI responses report reused tokens as
+`usage.prompt_tokens_details.cached_tokens`. Skippy telemetry also reports hit
+status, matched prefix tokens, suffix prefill tokens, and restore source.
+
+## Cache reference
+
+| Setting | Purpose |
+| --- | --- |
+| `prefix_cache` | Select `auto`, `on`, `off`, or record-only mode |
+| `prefix_cache_budget` | Set the resident retention target |
+| `prefix_cache_exact_budget` | Set the exact-state retention ceiling; one snapshot may exceed it |
+| `prefix_cache_max_entries` | Limit retained prefix entries |
+| `prefix_cache_ram` | Bound native recurrent checkpoints; serialized runtimes use optional L2 |
+| `prefix_cache_retention_tokens` | Bound attention cells retained after requests finish |
+| `prefill_admission` | Cooperatively batch uncached suffixes, or serialize their prefill |
+| `prefix_cache_min_tokens` | Avoid recording prefixes below a token threshold |
+| `prefix_cache_stride_tokens` | Set shared-prefix checkpoint spacing |
+| `kv_cache_type_k`, `kv_cache_type_v` | Choose live key/value precision |
+| `kv_cache_offload` | Place supported live KV work on the backend |
+| `flash_attention` | Select the compatible attention implementation |
+
+For cache namespaces in OpenAI-compatible and Anthropic-compatible requests,
+see [Deterministic caching](/getting-started/first-request/#deterministic-caching).

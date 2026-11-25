@@ -1,0 +1,415 @@
+---
+title: Model packages
+description: The complete Skippy model package v2 repository and manifest specification.
+---
+
+# Model packages
+
+A model package is a Hugging Face repository that binds an immutable source
+model to a verified set of GGUF artifacts. Skippy uses the package manifest to
+identify every artifact and tensor before it admits the model for local or
+distributed inference.
+
+Use a model package when you need reproducible model identity, selective
+artifact delivery for pipeline stages, or certification evidence. You do not
+need a package simply to serve a local GGUF file.
+
+The current package schema version is **2**. Version 1 packages must be
+converted offline before Skippy can load them.
+
+## Shortest working example
+
+Pass a package repository to any command that accepts a model reference:
+
+```console
+skippy models show hf://meshllm/Qwen3-8B-Q4_K_M-layers@<commit>
+skippy models download hf://meshllm/Qwen3-8B-Q4_K_M-layers@<commit>
+skippy serve --model hf://meshllm/Qwen3-8B-Q4_K_M-layers@<commit>
+```
+
+Replace `<commit>` with the repository commit you have reviewed. A tag can
+also provide an immutable deployment reference if its movement is controlled.
+See
+[meshllm/Qwen3-8B-Q4_K_M-layers](https://huggingface.co/meshllm/Qwen3-8B-Q4_K_M-layers)
+for a complete example repository.
+
+## Repository references
+
+Skippy accepts these package reference forms:
+
+| Form | Meaning |
+| --- | --- |
+| `hf://namespace/repository` | The repository's default revision |
+| `hf://namespace/repository:revision` | A named revision |
+| `hf://namespace/repository@revision` | A named revision, recommended for package references |
+
+Use an immutable commit for production. A bare repository reference can resolve
+to different content after its default branch moves.
+
+## Repository layout
+
+A package repository contains `model-package.json` at its root and the files
+declared by that manifest. A typical builder output looks like this:
+
+```text
+model-package.json
+shared/
+  metadata.gguf
+  common.gguf
+  common-part01.gguf
+layers/
+  layer-00000.gguf
+  layer-00001-part00.gguf
+  layer-00001-part01.gguf
+projectors/
+  projector-00000.gguf
+metadata/
+  config.json
+  generation_config.json
+  tokenizer_config.json
+  chat_template.jinja
+  hf_quant_config.json
+```
+
+Only files declared by the manifest are part of the package. The exact set of
+directories and filenames can vary. The artifact catalog, not the layout, is
+authoritative.
+
+Builder-generated payload artifacts normally stay below 8 GiB. A single tensor
+is indivisible and can therefore produce a larger artifact.
+
+## `model-package.json`
+
+The root manifest is UTF-8 JSON. It rejects unknown fields. This abridged
+example shows the schema shape; placeholder hashes and sizes must be replaced
+with real values produced by the package builder.
+
+```json
+{
+  "schema_version": 2,
+  "package_id": "sha256:<64 lowercase hex>",
+  "model_id": "Qwen3-8B-Q4_K_M",
+  "source_model": {
+    "sha256": "<64 lowercase hex>",
+    "metadata_artifact_id": "metadata",
+    "repo": "unsloth/Qwen3-8B-GGUF",
+    "revision": "<immutable source commit>",
+    "primary_file": "Qwen3-8B-Q4_K_M.gguf",
+    "canonical_ref": "unsloth/Qwen3-8B-GGUF:Q4_K_M",
+    "distribution_id": "Qwen3-8B-Q4_K_M",
+    "files": [
+      {
+        "path": "Qwen3-8B-Q4_K_M.gguf",
+        "byte_size": 5000000000,
+        "sha256": "<64 lowercase hex>"
+      }
+    ]
+  },
+  "format": "gguf",
+  "layer_count": 36,
+  "artifact_catalog": {
+    "entries": [
+      {
+        "id": "metadata",
+        "path": "shared/metadata.gguf",
+        "byte_size": 125000,
+        "sha256": "<64 lowercase hex>"
+      },
+      {
+        "id": "common",
+        "path": "shared/common.gguf",
+        "byte_size": 250000000,
+        "sha256": "<64 lowercase hex>"
+      },
+      {
+        "id": "layer-00000",
+        "path": "layers/layer-00000.gguf",
+        "byte_size": 130000000,
+        "sha256": "<64 lowercase hex>"
+      }
+    ]
+  },
+  "native_abi_version": "<required Skippy native ABI>",
+  "generator_version": "<package builder version>",
+  "created_at_unix_secs": 1763424000
+}
+```
+
+### Root field reference
+
+| Field | Required | Contract |
+| --- | --- | --- |
+| `schema_version` | Yes | Must be `2` |
+| `package_id` | Yes | Canonical package identity in `sha256:<64 lowercase hex>` form |
+| `model_id` | Yes | Non-empty logical model identifier |
+| `source_model` | Yes | Immutable identity and complete file inventory for the source model |
+| `format` | Yes | Must be `gguf` for packages produced by the current builder |
+| `layer_count` | Yes | Non-zero transformer layer count |
+| `artifact_catalog` | Yes | Complete catalog of package artifacts |
+| `sidecars` | No | Declared auxiliary artifacts, currently multimodal projectors |
+| `publisher_metadata` | No | Preserved publisher files and their provenance |
+| `publisher_defaults` | No | Validated compute and KV dtype defaults derived from publisher metadata |
+| `generation` | No | Typed request defaults and speculative-decoding declarations |
+| `native_abi_version` | Yes | Native ABI required to load the package |
+| `generator_version` | Yes | Non-empty version of the package generator |
+| `created_at_unix_secs` | Yes | Package creation time as Unix seconds; excluded from package identity |
+
+`model_metadata` and `tensor_catalog` do not belong in this JSON document.
+Skippy reconstructs them from the metadata carrier. A root manifest containing
+either field is invalid.
+
+## Package identity
+
+`package_id` identifies the complete logical package, not the repository name
+or revision. The builder computes it by:
+
+1. Copying the manifest.
+2. Emptying `package_id` and setting `created_at_unix_secs` to zero.
+3. Sorting source files, artifacts, sidecars, and publisher metadata into their
+   canonical order.
+4. Serializing the shared package schema.
+5. Hashing those bytes with SHA-256 and adding the `sha256:` prefix.
+
+This makes package identity deterministic across creation times. Artifact
+content, source identity, publisher data, and generation declarations still
+participate in the identity.
+
+Do not edit a generated manifest by hand. Any identity-bearing change requires
+the package ID to be recomputed and the package to be verified again.
+
+## Source model identity
+
+`source_model` records where the package came from and exactly which source
+files were used.
+
+| Field | Required | Contract |
+| --- | --- | --- |
+| `sha256` | Yes | Digest of the primary file in the immutable source distribution |
+| `metadata_artifact_id` | Yes | Artifact ID of the metadata-only GGUF carrier |
+| `repo` | No | Source repository identifier |
+| `revision` | No | Source revision, preferably an immutable commit |
+| `primary_file` | Yes | Primary source GGUF; it must appear in `files`, and its digest must equal `sha256` |
+| `canonical_ref` | No | Canonical model reference used by the resolver |
+| `distribution_id` | No | Source distribution identifier |
+| `files` | Yes | Non-empty inventory of source path, exact byte size, and SHA-256 digest |
+
+The inventory makes source identity auditable without asking consumers to trust
+a repository label. It is provenance, not a claim that the original publisher
+or repository is trustworthy.
+
+## Artifact catalog
+
+Every package file used by Skippy has one entry in
+`artifact_catalog.entries`:
+
+| Field | Contract |
+| --- | --- |
+| `id` | Stable, non-empty identifier unique within the package |
+| `path` | Normalized relative repository path unique within the package |
+| `byte_size` | Exact file size in bytes |
+| `sha256` | Lowercase SHA-256 digest of the complete file |
+
+Artifact paths cannot be absolute, contain `..` or current-directory
+components, or use backslashes. These rules make the same manifest safe to
+resolve on different operating systems and prevent a package from escaping its
+repository root.
+
+Filenames such as `layer-00012.gguf` describe physical storage only. They do
+not assign that artifact to pipeline stage 12 or make every tensor in it
+necessary for a stage.
+
+## Metadata carrier
+
+The artifact selected by `source_model.metadata_artifact_id` is a
+metadata-only GGUF file. It contains:
+
+- normalized model metadata;
+- the complete GGUF tensor directory;
+- one payload locator for every tensor, in tensor-directory order.
+
+It contains no tensor payload. Its file length must equal the GGUF data offset.
+Skippy can therefore construct and validate the model graph without downloading
+all model weights first.
+
+The carrier uses these GGUF keys:
+
+| Key | Meaning |
+| --- | --- |
+| `skippy.package.metadata_only` | Must be `true` |
+| `skippy.package.part_count` | Number of physical payload parts |
+| `skippy.package.locator_schema` | Locator schema version, currently `1` |
+| `skippy.package.tensor_part` | Artifact-part index for each tensor |
+| `skippy.package.tensor_offset` | Absolute payload offset for each tensor |
+| `skippy.package.tensor_size` | Stored payload length for each tensor |
+| `skippy.package.tensor_alignment` | Required alignment for each tensor |
+
+All locator arrays must have exactly one entry per tensor. The carrier and
+artifact catalog together reconstruct the runtime tensor catalog.
+
+## Tensor catalog and storage
+
+Each reconstructed tensor entry has a stable tensor ID and name, GGML type,
+non-empty dimensions, optional diagnostic layer ordinal, and storage
+description.
+
+Storage is either:
+
+- **owned**, which names an artifact ID, absolute byte offset, stored byte
+  length, power-of-two alignment, and integrity data; or
+- **alias**, which points to another tensor's owned storage.
+
+Tensor IDs and names must be unique. Dimensions must be non-zero, declared
+layer ordinals must be in range, and all owned byte ranges must fit inside
+their declared artifacts without illegal overlap.
+
+## Sidecars
+
+`sidecars` declares auxiliary files that are required by a model but are not
+part of the transformer tensor graph. The current schema supports the `mmproj`
+kind for multimodal projector files.
+
+Each sidecar names an artifact ID and can include a name. The pair of kind and
+name is its semantic identity. A sidecar does not encode pipeline-stage
+ownership. When a request needs it, package admission verifies the referenced
+artifact just like any other package file.
+
+## Publisher metadata and defaults
+
+Packages can preserve selected files from the source repository under
+`metadata/`:
+
+| Source file | Manifest role |
+| --- | --- |
+| `config.json` | `model_config` |
+| `generation_config.json` | `generation_config` |
+| `tokenizer_config.json` | `tokenizer_config` |
+| `chat_template.jinja` | `chat_template` |
+| `hf_quant_config.json` | `hf_quant_config` |
+
+Each entry records its artifact ID and source repository, revision, and path.
+The package builder can derive validated compute and KV dtype defaults from
+this material. Supported declared dtypes are `f16`, `bf16`, `f32`, `fp8`,
+`fp8_e4m3`, `fp8_e5m2`, `q8_0`, and `q4_0`.
+
+At runtime, KV types use this precedence:
+
+1. Explicit user K and V type settings.
+2. A validated package KV declaration.
+3. The package compute dtype, if it maps to a supported KV type.
+4. `F16` for both K and V.
+
+## Generation declarations
+
+The optional `generation` field can carry typed request defaults and
+speculative-decoding configuration. These declarations participate in package
+identity and are validated against the model graph.
+
+Generation declarations do not select stage tensors and do not replace
+explicit server or request settings. They provide packaged defaults that the
+runtime can apply when a more specific setting is absent.
+
+## How Skippy loads a package
+
+Skippy separates package structure from stage selection:
+
+1. Resolve the package repository at the requested revision.
+2. Read and validate `model-package.json`.
+3. Fetch and verify the metadata carrier.
+4. Reconstruct the normalized model metadata and tensor catalog.
+5. Build a metadata-only model graph.
+6. Let the planner produce a `StageSlicePlan` with exact tensor dependencies.
+7. Resolve those tensor IDs to artifact byte ranges.
+8. Fetch and verify only the required artifacts before loading the stage.
+
+This is why a physical `layers/` layout is useful but not authoritative.
+Graph-derived tensor dependencies determine what a stage needs. Every admitted
+stage also receives the metadata and sidecars required to execute its graph
+contract.
+
+## Create and publish a package
+
+Preview a package job first. This resolves the source model and quantization
+and shows what Skippy would submit without publishing anything:
+
+```console
+skippy models package unsloth/Qwen3-8B-GGUF:Q4_K_M
+```
+
+After reviewing the source and destination, submit the job and follow it:
+
+```console
+skippy models package unsloth/Qwen3-8B-GGUF:Q4_K_M --confirm --follow
+```
+
+Publishing requires explicit `SKIPPY_MODEL_CATALOG` and
+`SKIPPY_PACKAGE_BUCKET` settings. The builder inventories the source, splits
+payloads into artifacts, writes the metadata carrier and root manifest,
+computes every size and digest, recomputes package identity, verifies the
+result, and only then publishes it.
+
+Do not assemble a v2 package by renaming split GGUF files. The metadata carrier,
+tensor locators, artifact catalog, package identity, and ABI declaration must
+all agree.
+
+## Certify a package
+
+Certify a completed repository independently before using it for serving:
+
+```console
+skippy models certify owner/Qwen3-8B-Q4_K_M-layers --package-only
+```
+
+Package-only certification checks the manifest, complete file roster, hashes,
+layer coverage, native ABI, build recipe, and model identity. Certification can
+also include runtime smoke evidence when the required model and hardware are
+available.
+
+Certification proves that the checked repository satisfies the package
+contract. It does not prove that an untrusted source or publisher is authentic.
+Record the certified package ID and pin the certified repository commit in
+deployments.
+
+## Common failures
+
+| Symptom | Likely cause | Resolution |
+| --- | --- | --- |
+| A package changed between deployments | The reference used a moving branch | Pin the admitted commit and package ID |
+| Package identity mismatch | The manifest changed after `package_id` was computed | Rebuild the package and republish all affected files |
+| Artifact size or digest mismatch | Upload is partial, corrupt, or from another build | Replace the artifact from the verified build output |
+| Unsafe artifact path | The path is absolute, traverses directories, or uses backslashes | Rebuild with normalized repository-relative paths |
+| Metadata carrier is rejected | It contains payload, lacks locator arrays, or disagrees with the tensor directory | Regenerate it with the matching Skippy package builder |
+| A required tensor cannot be admitted | Its ID is missing, duplicated, aliased incorrectly, or points outside an artifact | Rebuild and verify the tensor catalog and locators |
+| Native ABI mismatch | The runtime cannot satisfy `native_abi_version` | Use a compatible Skippy release or rebuild the package |
+| Multimodal requests fail | The required `mmproj` sidecar is absent or its digest does not match | Add the projector as a declared and verified sidecar |
+| Schema version is rejected | The package uses v1 or an unknown future schema | Convert v1 offline or upgrade Skippy for a supported future schema |
+
+## Compatibility rules
+
+- Consumers must reject unknown schema versions and unknown root fields.
+- Skippy v2 package loading is fail-closed. Missing or inconsistent identity,
+  metadata, tensor storage, sidecars, or ABI requirements stop admission.
+- Version 1 packages are not accepted by the runtime. Conversion is an offline
+  migration that produces a new v2 package identity.
+- Wire and hash compatibility is deliberate. Any change to canonical
+  serialization or identity-bearing fields requires a schema decision.
+- Repository filenames can evolve without changing stage semantics, provided
+  the artifact catalog and reconstructed tensor catalog remain valid.
+
+## Command and contract reference
+
+| Operation | Command or rule |
+| --- | --- |
+| Inspect a package | `skippy models show hf://OWNER/REPOSITORY@REVISION` |
+| Download a package | `skippy models download hf://OWNER/REPOSITORY@REVISION` |
+| Serve a package | `skippy serve --model hf://OWNER/REPOSITORY@REVISION` |
+| Preview package creation | `skippy models package REFERENCE` |
+| Create and publish | `skippy models package REFERENCE --confirm --follow` |
+| Verify package structure | `skippy models certify REPOSITORY --package-only` |
+| Root manifest | `model-package.json` with `schema_version: 2` |
+| Package identity | Canonical `sha256:<64 lowercase hex>` |
+| Artifact integrity | Exact byte size and lowercase SHA-256 digest |
+| Stage selection | Graph-derived tensor closure, never filenames |
+| Compatibility | Package schema and native ABI requirements |
+
+For the implementation-level contract, see
+[Skippy package v2 schema](https://github.com/Mesh-LLM/skippy/blob/main/docs/design/SKIPPY_PACKAGE_V2_SCHEMA.md).

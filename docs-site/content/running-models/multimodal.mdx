@@ -1,0 +1,49 @@
+---
+title: Multimodal models
+description: Serve a GGUF with an associated projector sidecar.
+---
+
+# Multimodal models
+
+A multimodal model combines a language model with a projector that converts
+media input into representations the language model can consume. Multimodal
+GGUFs therefore require a matching projector (`mmproj`) sidecar.
+
+Use a catalog or direct download when a matching projector is declared there.
+Use `--mmproj` when the model and projector are managed as local files.
+
+## Serve with a projector
+
+Catalog downloads include the catalog-declared projector when one is
+available.
+
+Select an explicit local projector when needed:
+
+```console
+skippy serve \
+  --model /models/vision-model.gguf \
+  --mmproj /models/mmproj-model-f16.gguf
+```
+
+The projector must match the model family and source revision. Treat the model
+and projector as one verified input set rather than mixing similarly named
+files from different repositories.
+
+## How projector admission works
+
+Skippy resolves the model and projector together, verifies their files, and
+passes both through native model admission before exposing the API. The
+projector is not interchangeable metadata: its tensor layout and source model
+must match the language model. A missing or incompatible projector fails model
+startup instead of falling back to text-only behavior.
+
+## Projector reference
+
+| Source | Projector selection |
+| --- | --- |
+| Catalog model | Catalog-declared projector is downloaded with the model |
+| Hugging Face reference | Matching declared artifact is resolved with the model |
+| Local model | Supply `--mmproj /path/to/mmproj.gguf` |
+
+Keep model and projector files at the same immutable source revision. If a
+load fails, verify both identities before changing runtime or memory settings.

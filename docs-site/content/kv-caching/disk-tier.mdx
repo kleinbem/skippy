@@ -1,0 +1,84 @@
+---
+title: Durable disk tier
+description: Persist reusable prompt state across process restarts.
+---
+
+# Durable disk tier
+
+The disk tier stores verified prompt state below the in-process prefix cache.
+It lets reusable prefixes survive process restarts and extends retention beyond
+the resident cache. Set an automatic disk budget of up to 64 GiB,
+subject to available space and the free-space reserve.
+
+Use it when repeated prompts are valuable across restarts or do not fit in the
+resident retention budget. Keep it off when local storage latency, capacity, or
+data-retention policy makes durable prompt state undesirable.
+
+## Enable the disk tier
+
+```toml
+[cache]
+prefix_cache = "on"
+kv_cache_disk = "32GiB"
+kv_cache_disk_dir = "/var/lib/skippy/kv-cache"
+kv_cache_min_free = "16GiB"
+```
+
+Or override one run from the CLI:
+
+```console
+skippy serve \
+  --model Qwen3-0.6B-Q4_K_M \
+  --kv-cache-disk 32GiB \
+  --kv-cache-disk-dir /var/lib/skippy/kv-cache \
+  --kv-cache-min-free 16GiB
+```
+
+Use `auto` instead of a fixed size for a budget capped at 20% of the sum of
+free and already managed space. Skippy also applies the 64 GiB cap and
+honors the minimum free-space reserve. Use `off` to disable the tier.
+
+## How the tiers interact
+
+Skippy compares compatible resident and committed disk prefixes and restores
+the longest valid checkpoint. A resident prefix wins a tie. Resident native
+state is exported when it is cold-evicted, rather than serializing every warm
+record. Restored disk entries are verified before use. A refused or failed
+cold offload can lose reuse and require cold prefill on a later request.
+
+## Failure policy
+
+Invalid cache configuration fails startup so a typo cannot silently change the
+operator's retention policy. Once a valid configuration is running, storage
+unavailability fails open for inference: Skippy logs the problem and serves
+with cold prefill rather than making the model unavailable.
+
+Native resident runtimes use `prefix_cache_ram` for recurrent checkpoints,
+independently of disk. Serialized runtimes use it for an optional host-RAM tier
+above an active disk tier:
+
+```toml
+[cache]
+prefix_cache_ram = "4GiB"
+kv_cache_disk = "32GiB"
+```
+
+On unified-memory systems, use `prefix_cache_ram = "off"` to disable the
+serialized L2 tier.
+Native recurrent checkpoints still need their own bounded RAM allocation.
+See [Unified-memory systems](/kv-caching/#unified-memory-systems).
+
+Legacy `SKIPPY_KV_CACHE=off` and `SKIPPY_PREFIX_CACHE=off` remain emergency
+kill switches. Unset them before explicitly enabling prefix caching.
+
+## Disk-tier reference
+
+| Setting | Values | Purpose |
+| --- | --- | --- |
+| `kv_cache_disk` | `off` (default), `auto`, or IEC size | Enable and bound durable storage |
+| `kv_cache_disk_dir` | Local directory | Choose the cache root. Defaults to `$SKIPPY_HOME/kv-cache` or `~/.skippy/kv-cache`. |
+| `kv_cache_min_free` | IEC size of at least `1GiB` | Reserve free space on the volume. Defaults to `16GiB`. |
+| `prefix_cache_ram` | `off` or IEC size | Bound native checkpoint RAM; serialized runtimes can add a RAM tier above disk |
+
+Invalid startup configuration is fatal. Runtime storage failure is not:
+inference continues with cold prefill and Skippy reports the cache error.

@@ -1,0 +1,237 @@
+---
+title: CLI reference
+description: Look up standalone Skippy commands, flags, defaults, and output formats.
+---
+
+# CLI reference
+
+The `skippy` command serves models, opens terminal chat sessions, manages
+models and native runtimes, and prepares pipeline stages. Use it to run
+inference locally or across workers, inspect an installation, or script
+operational tasks.
+
+## Quick start
+
+Run these commands from a terminal with Skippy installed.
+
+```console
+skippy doctor
+skippy serve --model Qwen3-0.6B-Q4_K_M --prompt
+```
+
+The second command starts the API and opens a chat prompt once it is ready.
+Enter `:quit` to end the session and stop the server. For installation steps,
+see [Install and run Skippy](/getting-started/).
+
+## How the CLI runs a command
+
+`serve` selects a compatible native runtime, reuses cached model files or
+downloads missing files for a remote model reference, then exposes both the
+OpenAI-compatible and Anthropic Messages APIs. CLI values override
+`SKIPPY_SERVE_*` environment variables, which override `--settings` TOML
+values. Any remaining settings come from the model or stage policy and built-in
+defaults. Use `--print-effective-config` with the same model or stage input to
+inspect the resolved configuration and its sources without starting the API.
+
+With `--output auto`, commands that report a single result usually use JSON
+when stdout is redirected. `models` and `prompt` default to human output even
+when redirected. A redirected `serve` uses JSONL, and
+`serve --print-effective-config` defaults to JSON. Each JSONL event has
+`schema_version`, `sequence`, `type`, and `data` fields. Wait for the `ready`
+event before sending requests. For a stream of serving events, run:
+
+```console
+skippy serve --model Qwen3-0.6B-Q4_K_M --output jsonl
+```
+
+## Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| Skippy cannot select a runtime | Run `skippy doctor`, then use `skippy runtime list --available` to inspect candidate compatibility. |
+| `serve` rejects the model source | Choose one of `--model`, `--model-path`, or `--config`, including values supplied through the environment or settings file. |
+| `serve --prompt` fails at startup | Use an interactive terminal and human output. The prompt requires a public API and cannot run with `--worker-only`. |
+| A downstream stage fails to start | Verify its prepared stage config and use `--stage-transport binary --worker-only`. Start the final stage first and stage 0 last. |
+| The API rejects the client model ID | Query `GET /v1/models` on the serving address and use the returned ID. |
+
+## Global options
+
+Use `skippy --help` for the command list and `skippy COMMAND --help` for the
+syntax and accepted values in your installed version. For a nested command,
+run its full path, such as `skippy models download --help`.
+
+| Option | Meaning and default |
+| --- | --- |
+| `-h`, `--help` | Show help for the current command. |
+| `-V`, `--version` | Show the CLI version from the top-level command. |
+| `--output FORMAT` | `auto` (default), `human`, `json`, or `jsonl`. Use `human` or `jsonl` for a running server. |
+| `--debug` | Stream native diagnostics as they occur. By default, Skippy retains recent native logs and displays them on failure. |
+| `--runtime-bundle DIR` | Add a verified native runtime bundle directory. Repeat for multiple directories. |
+| `--runtime-cache DIR` | Override the native runtime cache. The fallback is `SKIPPY_NATIVE_RUNTIME_CACHE_DIR`, then `skippy/native-runtimes` under the platform cache directory. |
+| `--runtime-release RELEASE` | Require a native runtime release. Defaults to the CLI build's runtime release metadata. |
+| `--runtime-selection SELECTION` | Select a runtime backend or exact artifact ID. By default, Skippy selects a compatible runtime for the host. |
+
+## `serve`
+
+| Invocation or option | Meaning and default |
+| --- | --- |
+| `skippy serve --model MODEL` | Serve a catalog ID, Hugging Face GGUF or layer-package reference, or local GGUF path. |
+| `skippy serve --model-path PATH` | Open a local GGUF file. For a multipart model, pass the first shard. |
+| `skippy serve --config FILE` | Serve a prepared JSON stage configuration. For a pipeline, add `--stage-transport binary`, and add `--worker-only` on downstream stages. |
+| `--settings FILE` | Load TOML for one model or a list of models. Each `[[models]]` entry can use a `model` reference or an explicit `model_path`. |
+| `--print-effective-config` | Report resolved settings and where they came from, then exit. |
+| `--bind-addr ADDRESS` | Set the public API address, which defaults to `127.0.0.1:9337`. In worker-only mode this overrides the binary stage listener. |
+| `--model-id ID` | Set the model ID the public API advertises and accepts for single-model serving. For a model list, set `id` on the entry. |
+| `--prompt` | Open an interactive prompt after the public API is ready. Off by default. |
+| `--default-max-tokens N` | Set the default API completion ceiling. Defaults to 8192, bounded by the remaining context. |
+| `--ctx-size N` | Set the context size for a local model. By default, Skippy plans it from available memory and model metadata. |
+| `--n-gpu-layers N` | Set the number of local model layers to offload. Use `-1` to offload all supported layers. |
+| `--gpu-id ID` | Pin an offloaded local model to a stable GPU ID. Use `doctor --device-inventory` to inspect IDs and visibility. |
+| `--generation-concurrency N` | Set the maximum active generation requests. Automatic local planning defaults to four lanes sharing a KV pool. |
+| `--mmproj PATH` | Select a multimodal projector GGUF. By default, Skippy looks for a matching installed projector. |
+| `--on-demand` | Defer an unsplit model's native load until the first inference request. Eager loading is the default. |
+| `--idle-evict-secs N` | Release an unsplit model after 1–86,400 idle seconds. Omit to disable idle eviction. |
+| `--residency-budget-bytes N` | Set the positive admission budget in bytes for model residency. Defaults to the identified model's source size. |
+
+Run `skippy serve --help` for the full serving flag list. The serving docs
+cover TOML keys, environment variables, and tuning controls.
+[Serving configuration](/configuration/) · [Serving option reference](/configuration/reference/)
+
+## `prompt`
+
+Run `skippy prompt` to chat with a running server. It requires human output.
+Enter `:reset` to clear conversation context, `:history` to list the prompts
+entered in this session, or `:quit` to exit the client.
+
+| Option | Meaning and default |
+| --- | --- |
+| `--endpoint URL` | OpenAI-compatible API base URL. Defaults to `http://127.0.0.1:9337/v1`. |
+| `--model ID` | Model ID to request. Defaults to the first entry returned by `/models` under the API base URL. |
+| `--max-new-tokens N` | Positive completion-token budget. Uses the server default when omitted. |
+| `--raw` | Send each line independently to `/completions`. The default uses `/chat/completions` with conversation history. |
+| `--no-think` | Request `reasoning_effort=none`. Omitted by default. |
+| `--history-path FILE` | Load and save terminal input history at this path. By default, the client uses session-only history. |
+
+## `models`
+
+Commands below are relative to `skippy models`. Each accepts `--json` for JSON
+output. For model selection and package workflows, see
+[Running models](/running-models/) and [Model packages](/pipeline-parallelism/model-packages/).
+
+Use the separate `skippy-quantize` tool to convert or quantize local weights.
+[Quantize a model](/running-models/quantization/)
+
+| Subcommand | Options and behavior |
+| --- | --- |
+| `recommended` | List models from the configured catalog. `SKIPPY_MODEL_CATALOG` overrides the default `meshllm/catalog` dataset. |
+| `search QUERY...` | Search Hugging Face for GGUF models (`--gguf`). Defaults to `--limit 20` and `--sort trending`. Use `--catalog` to restrict results to the catalog. Sort values are `trending`, `downloads`, `likes`, `created`, `updated`, `parameters-desc`, and `parameters-asc`. |
+| `show MODEL` | Describe an exact model reference and its resolved files. |
+| `download MODEL` | Download a model. Use `--direct` to bypass catalog layer packages and `--draft` to also fetch the recommended speculative draft. |
+| `installed` | List GGUF models and installed layer packages in the local Hugging Face cache. |
+| `updates [REPO]` | Check for newer revisions with `--check`. To refresh cached files, name a repository or use `--all`. The alias is `update`. |
+| `delete MODEL` | Preview removal of a specific model from local storage. Apply with `--yes`. |
+| `cleanup` | Preview removal of Skippy-managed model files. Filter by age with `--unused-since 30d` or `--unused-since 12h`. Apply with `--yes`. |
+| `prune` | Preview removal of stale derived stage artifacts. Apply with `--yes`. |
+| `package [SOURCE]` | Plan, submit, or manage a Hugging Face Jobs layer-package build. See the options below. |
+| `certify MODEL` | Verify a layer package. Choose `--package-only` for package checks and stage materialization, or `--api-base URL` to include runtime smoke checks. Use `--report-out FILE` to save the report. Runtime smoke defaults are `--prompt 'Say ok.'` and `--max-tokens 2`. |
+
+### `models package`
+
+Use a source reference such as `org/repo:Q4_K_M` to preview a job. A source
+without a quantization lists the available variants. Management options take
+no source reference.
+
+| Option | Meaning and default |
+| --- | --- |
+| `--dry-run`, `--confirm` | Preview by default. Use `--confirm` to submit a job. `--dry-run` keeps it a preview even with `--confirm`. |
+| `--follow` | Stream logs after submission. Use human output with this option. |
+| `--target REPO`, `--model-id ID` | Override the destination repository or model ID. The destination is derived from the source by default. |
+| `--generation-defaults FILE` | Embed reviewed generation defaults from a JSON file. |
+| `--flavor FLAVOR` | Choose Hugging Face Jobs hardware. Defaults to `auto`. |
+| `--timeout DURATION` | Request a job timeout. Defaults to `1h` and can increase to meet model-size minimums. |
+| `--skippy-ref REF` | Select the Skippy branch or tag the job builds. Defaults to `main`. |
+| `--experimental` | Publish an experimental public package and open an unmerged catalog pull request. |
+| `--status ID`, `--logs ID`, `--cancel ID`, `--list` | Check a job, fetch its logs, cancel it, or list recent jobs. |
+| `--update-script` | Upload the job script to the configured package bucket. Requires organization access. |
+
+## `runtime`
+
+Commands below are relative to `skippy runtime`. See [Runtime and
+hardware](/running-models/runtime-and-hardware/) for runtime selection.
+
+| Subcommand | Options and behavior |
+| --- | --- |
+| `list` | List discoverable local runtimes by default (`--installed`). Use `--available` for release catalog candidates and compatibility. With `--available`, use `--manifest FILE` for a local release catalog. |
+| `install [RUNTIME]` | Install the recommended compatible runtime by default. Supply a backend, an exact runtime ID, or `--manifest FILE` to select a local release catalog. |
+| `remove ID` | Remove a cached runtime by exact ID. Use `--release RELEASE` to override the selected release. |
+| `prune` | Remove older cached runtime releases while keeping the active and previous releases. Use `--active-only` to keep just the active release, or `--release RELEASE` to select the active release. |
+
+## `serve-managed` and `manage`
+
+On Unix, `serve-managed` exposes an inference listener and a private local
+management socket. Start with an empty model registry, then load or drain
+models while the HTTP listener stays running.
+
+```console
+state_dir=$(mktemp -d)
+skippy serve-managed --management-socket "$state_dir/control.sock" &
+```
+
+Once the listener reports ready, use the same socket path for management.
+Replace `/models/model.gguf` with an absolute path to an existing local model.
+
+```console
+skippy manage --management-socket "$state_dir/control.sock" load demo /models/model.gguf
+skippy manage --management-socket "$state_dir/control.sock" status
+```
+
+| Option or operation | Meaning and default |
+| --- | --- |
+| `--management-socket PATH` | Required by both commands. Use a new absolute socket path in an existing owner-only directory, such as one created with `mktemp -d`. |
+| `serve-managed --bind-addr ADDRESS` | Public inference listener address. Defaults to `127.0.0.1:9337`. |
+| `serve-managed --eager-model ID=PATH` | Load a model at startup. Repeat for multiple models. Paths must be absolute. |
+| `serve-managed --best-effort` | Keep serving successfully loaded eager models when some fail. The default is fail-fast startup. |
+| `manage … status` | List model states and instance IDs. Successful management commands emit the current model list as JSON by default. |
+| `manage … load ID PATH` | Load a local model with an absolute path. |
+| `manage … drain ID [--instance N] [--timeout-secs N]` | Stop new requests and wait for active requests and streams to release the model. The timeout defaults to 30 seconds and accepts 0–86,400. An expired deadline requests cancellation and the model can still be draining. |
+| `manage … unload ID [--instance N]` | Request immediate cancellation and release once the model is idle. For `drain` and `unload`, use the instance ID from `status` to guard against operating on a replacement model. |
+
+## `analytics`
+
+| Subcommand | Meaning |
+| --- | --- |
+| `status` | Show whether this process reports anonymous usage and why. |
+| `enable` | Save an enabled preference. Effective reporting still depends on the project key and process settings. |
+| `disable` | Save an opt-out across restarts and upgrades. |
+
+See [Anonymous analytics](/configuration/analytics/) for precedence and the data collected.
+
+## `plan-split`
+
+This example uses a local `model.gguf` with a release-certified split recipe
+and writes to a new `split-plan` directory. Skippy admits the stages before
+writing `stage-N.json` and `admissions.json`.
+
+```console
+skippy plan-split --model-path model.gguf \
+  --worker 127.0.0.1:9400 --worker 127.0.0.1:9401 --output-dir split-plan
+```
+
+| Option | Meaning and default |
+| --- | --- |
+| `--model-path PATH` | Required local GGUF file. Use the first shard for a multipart model. |
+| `--worker ADDRESS` | Supply at least two distinct stage endpoints in pipeline order. |
+| `--output-dir DIR` | Required new directory for stage configs and admission diagnostics. |
+| `--model-id ID` | Set the model ID. Defaults to the GGUF filename stem. |
+| `--ctx-size N`, `--lanes N` | Set context capacity and concurrency per stage. Defaults are 512 tokens and one lane. |
+| `--n-gpu-layers N` | Set GPU layer placement. Defaults to `0` for CPU execution. |
+
+For a full split example and startup order, see [Pipeline parallelism](/pipeline-parallelism/).
+
+## Diagnostics and example configuration
+
+| Command | Options and behavior |
+| --- | --- |
+| `skippy example-config` | Emit an example single-stage config as JSON without loading a runtime. |
+| `skippy doctor` | Report host hardware, native-runtime selection, and cache locations. Add `--device-inventory` for stable device IDs, visibility, and known capacity. |
+| `skippy gpu-benchmark` | Measure GPU bandwidth and compute using an installed Metal, CUDA, or ROCm runtime with a benchmark tool. `--timeout-secs` defaults to 120 and accepts 1–86400. |

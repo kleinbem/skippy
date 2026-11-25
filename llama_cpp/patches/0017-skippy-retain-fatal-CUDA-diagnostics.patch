@@ -1,0 +1,29 @@
+From ade48252d41d7ee0458bcd0cddf9b165fb2b993a Mon Sep 17 00:00:00 2001
+From: Skippy CI <ci@skippy.local>
+Date: Tue, 17 Nov 2026 21:32:09 +1100
+Subject: [PATCH] skippy: retain fatal CUDA diagnostics during quiet device
+ discovery
+
+---
+ ggml/src/ggml-cuda/ggml-cuda.cu | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index 664a391af..38caaf041 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -113,7 +113,10 @@ void ggml_cuda_error(const char * stmt, const char * func, const char * file, in
+     GGML_LOG_ERROR("  current device: %d, in function %s at %s:%d\n", id, func, file, line);
+     GGML_LOG_ERROR("  %s\n", stmt);
+     // abort with GGML_ABORT to get a stack trace
+-    GGML_ABORT(GGML_CUDA_NAME " error");
++    // Device discovery can temporarily suppress log callbacks. Fatal failures
++    // must retain their cause in the abort diagnostic regardless of that filter.
++    GGML_ABORT(GGML_CUDA_NAME " error: %s (device %d; %s at %s:%d; %s)",
++            msg, id, func, file, line, stmt);
+ }
+ 
+ // map a (possibly virtual) device id to the physical CUDA device that backs it
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,70 @@
+---
+title: Multi-machine stages
+description: Place generated stage plans on explicit remote workers.
+---
+
+# Multi-machine stages
+
+Multi-machine serving places the stages from one admitted pipeline plan on
+separate hosts. Stage zero remains the only public API; downstream machines
+exchange internal activations over the binary stage transport.
+
+Use this layout when no single host can contain the planned workload. Every
+host needs the exact model inputs recorded by its stage file, a compatible
+runtime, and connectivity to the addresses in the ordered plan.
+
+## Plan reachable workers
+
+Use addresses reachable from every participating machine:
+
+```console
+skippy plan-split \
+  --model-path /models/model.gguf \
+  --model-id local-model \
+  --worker 10.0.0.10:9400 \
+  --worker 10.0.0.11:9401 \
+  --output-dir remote-plan
+```
+
+Place each generated `stage-N.json` on its worker with the exact verified model
+files recorded by that plan. Start the final stage first and stage zero last.
+For shutdown, stop stage zero first and wait for it to exit before stopping
+downstream workers.
+
+## How startup and shutdown work
+
+Starting downstream stages first lets each worker bind its listener and pass
+readiness before stage zero accepts public traffic. During shutdown, stopping
+stage zero first prevents new work while in-flight requests drain. A downstream
+failure makes the ordered pipeline unavailable until that stage is restored.
+
+## Network boundary
+
+The binary stage transport is an internal protocol, not public ingress. Put
+worker listeners on a private, authenticated network boundary and expose only
+stage zero's public API. A process is not ready merely because it spawned;
+stage zero should receive traffic only after all downstream stages have passed
+their readiness checks.
+
+## Operational invariants
+
+- Every stage uses the same admitted model identity and compatible runtime.
+- Worker order is part of the plan.
+- Exact model bytes must remain available at the paths recorded by the plan.
+- Activation width, tensor ownership, and state handoff come from admission,
+  not filename conventions.
+- Change the topology by creating a new plan, not by editing JSON.
+
+## Multi-machine reference
+
+| Check | Requirement |
+| --- | --- |
+| Model identity | Exact admitted bytes at the paths recorded for each stage |
+| Runtime | Compatible Skippy ABI and backend on every worker |
+| Network | Private authenticated reachability between ordered listeners |
+| Startup | Final stage first, stage zero last |
+| Shutdown | Stage zero first, downstream stages after it exits |
+| Public ingress | Stage zero only |
+
+If startup fails, check listener reachability, model paths, runtime admission,
+and worker order before generating another plan.

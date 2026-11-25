@@ -1,0 +1,132 @@
+---
+title: Contribute to Skippy
+description: Build, test, and change Skippy without weakening its contracts.
+---
+
+# Contribute to Skippy
+
+Skippy accepts changes to inference behavior, model support, tooling,
+documentation, and qualification evidence. Contributions must preserve the
+runtime, ABI, performance, and model-behavior contracts that make a serving
+engine safe to release.
+
+Use an issue to establish the problem and intended approach before investing
+in an implementation. Small documentation fixes still use the same issue and
+pull request flow so the change remains reviewable and attributable.
+
+## Open an issue and pull request
+
+- Start by opening a GitHub issue to discuss the proposed change. Once the
+  approach is agreed, submit a pull request linked to that issue.
+- Use a fork or an upstream branch if you have permission to push one.
+- AI-assisted and AI-generated pull requests are welcome. Contributors remain
+  responsible for understanding, testing, and explaining the submitted
+  changes.
+- Before merging, changes are benchmarked against the current `main` branch.
+  This protects inference performance, output correctness, KV-cache behavior,
+  memory use, and other critical serving characteristics from regressions.
+- By submitting a contribution, you agree that it will be licensed under the
+  Apache License 2.0.
+
+## Why pull requests need approval
+
+Skippy tests inference on real hardware, including Mac Studios, Mac minis,
+NVIDIA DGX Sparks, and AMD Ryzen Halo 395 development systems. A Mesh-LLM
+organization member with repository write access approves workflow runs for
+external fork pull requests. Fork builds require isolated runners. Shared lab
+qualification requires a trusted contributor and a branch in the upstream
+repository.
+
+If you’re interested in sponsoring cloud-based inference hardware for Skippy,
+please reach out to the Mesh LLM team on Discord or Buzz.
+
+## Build from source
+
+Install Rust, Just, CMake, Ninja, and the native toolchain for your chosen
+backend. From the repository root, build and inspect the development bundle:
+
+```console
+just build
+./target/debug/skippy --version
+./target/debug/skippy doctor
+```
+
+On Windows, run `.\target\debug\skippy.exe` in PowerShell. The build puts a
+verified native runtime under `target/debug/native-runtimes/` for the CLI to
+discover. Use `just build cpu` to select the CPU backend explicitly.
+
+A source checkout may require a newer native ABI than the latest release. Use
+`--runtime-bundle PATH` to select a compatible local runtime bundle explicitly.
+
+### Build the quantizer
+
+From the repository root, build the separate `skippy-quantize` binary.
+
+```console
+just with-lld cargo build --locked -p skippy-quantize
+```
+
+The binary is `target/debug/skippy-quantize` or `target/debug/skippy-quantize.exe`
+on Windows. For GGUF quantization, use a native runtime bundle with the same
+Skippy ABI. The `just build cpu` recipe above builds a matching bundle.
+[Quantize a model](/running-models/quantization/)
+
+## Develop and verify the change
+
+Read the repository `CONTRIBUTING.md` and the closest `AGENTS.md` before making
+changes. Build and test through Just:
+
+```console
+just format
+just lint
+just test
+```
+
+Run Cargo commands serially in each checkout. For changed Rust crates, run
+formatting, a focused check, warning-denying all-target Clippy, and full tests,
+including integration and documentation tests.
+
+The pull request should explain the user-visible behavior, relevant contracts,
+test coverage, and benchmark comparison. A missing required fixture or device
+cannot count as successful qualification.
+
+## How changes are evaluated
+
+Review checks correctness and contract preservation first. Benchmarks compare
+the change with the current `main` branch for inference performance, output
+behavior, KV-cache behavior, memory use, and other affected serving paths.
+Hardware-specific claims require explicit qualification on the named hardware.
+
+## Repository layout
+
+| Path | Ownership |
+| --- | --- |
+| `crates/` | CLI, model tooling, runtime, serving, protocol, topology, caching, and metrics |
+| `skippy-api-rs/` | Separate Rust facade workspace |
+| `skippy_api/` | C++ facade |
+| `llama_cpp/` | Pinned upstream metadata and ordered patch queues |
+| `scripts/` | Shell and Python repository automation |
+| `docs/` | Operator guides, contracts, designs, and qualification records |
+
+## Preserve contracts
+
+- Keep ABI declarations, bindings, version constants, generated docs, and
+  certification recipes consistent.
+- Keep ordered core, model-support, and generated llama patch queues
+  authoritative.
+- Put model-specific behavior in model builders rather than family-name
+  branches in shared stage machinery.
+- Preserve wire and hash compatibility deliberately.
+- Default tests are offline; hardware qualification must fail or queue when a
+  required fixture or device is absent.
+
+## Contribution reference
+
+| Step | Requirement |
+| --- | --- |
+| Discuss | Open a GitHub issue |
+| Submit | Open a linked pull request from a fork unless you are a core contributor |
+| Verify | Run the focused Just-driven checks required by the affected code |
+| Benchmark | Compare affected serving behavior with current `main` |
+| License | Apache License 2.0 |
+| AI assistance | Accepted; the contributor remains responsible for the change |

@@ -1,0 +1,13 @@
+[package]
+name = "skippy-model-ref"
+edition.workspace = true
+license.workspace = true
+publish = false
+version.workspace = true
+description = "Model reference parsing and normalization helpers for Skippy"
+repository = "https://github.com/Mesh-LLM/skippy"
+homepage = "https://github.com/Mesh-LLM/skippy"
+readme = "README.md"
+
+[dependencies]
+serde.workspace = true

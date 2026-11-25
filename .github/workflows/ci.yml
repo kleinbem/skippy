@@ -1,0 +1,844 @@
+name: CI
+on:
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'skippy-api-rs/**'
+      - 'skippy_api/**'
+      - 'llama_cpp/**'
+      - 'tools/**'
+      - 'scripts/**'
+      - '.cargo/**'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+      - '.github/path-filters.yml'
+      - '.github/actionlint.yaml'
+      - '.github/workflows/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'Justfile'
+      - '.python-version'
+      - 'ci/**'
+      - '.gi/templates.yaml'
+      - '!**/*.md'
+      - '!**/*.mdx'
+      - '!**/*.rst'
+      - '!**/*.adoc'
+      - '!**/docs/**'
+      - '!docs-site/**'
+  pull_request_target:
+    paths:
+      - 'crates/**'
+      - 'skippy-api-rs/**'
+      - 'skippy_api/**'
+      - 'llama_cpp/**'
+      - 'tools/**'
+      - 'scripts/**'
+      - '.cargo/**'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+      - '.github/path-filters.yml'
+      - '.github/actionlint.yaml'
+      - '.github/workflows/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'Justfile'
+      - '.python-version'
+      - 'ci/**'
+      - '.gi/templates.yaml'
+      - '!**/*.md'
+      - '!**/*.mdx'
+      - '!**/*.rst'
+      - '!**/*.adoc'
+      - '!**/docs/**'
+      - '!docs-site/**'
+  push:
+    branches: [main]
+    paths:
+      - 'crates/**'
+      - 'skippy-api-rs/**'
+      - 'skippy_api/**'
+      - 'llama_cpp/**'
+      - 'tools/**'
+      - 'scripts/**'
+      - '.cargo/**'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+      - '.github/path-filters.yml'
+      - '.github/actionlint.yaml'
+      - '.github/workflows/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'Justfile'
+      - '.python-version'
+      - 'ci/**'
+      - '.gi/templates.yaml'
+      - '!**/*.md'
+      - '!**/*.mdx'
+      - '!**/*.rst'
+      - '!**/*.adoc'
+      - '!**/docs/**'
+      - '!docs-site/**'
+  schedule:
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Short checks or complete native/package qualification
+        type: choice
+        options: [pr, full]
+        default: full
+      cuda_architecture_mode:
+        description: CUDA architectures for the assigned GPU or the release architecture set
+        type: choice
+        options: [native, release]
+        default: native
+  workflow_call:
+    inputs:
+      profile:
+        type: string
+        default: full
+      cuda_architecture_mode:
+        type: string
+        default: release
+      artifact_scope:
+        type: string
+        default: ci
+      source_ref:
+        type: string
+        default: ''
+      candidate_artifact:
+        type: string
+        default: ''
+      candidate_sha:
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  # Main pushes share one slot. GitHub's default queue replaces a pending run
+  # when another push arrives, and the running build finishes.
+  group: >-
+    skippy-ci-${{ github.workflow }}-${{ inputs.artifact_scope || 'ci' }}-${{
+      (github.event.pull_request.number && format('{0}-{1}', github.event_name, github.event.pull_request.number)) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main-push') ||
+      github.run_id }}
+  cancel-in-progress: ${{ github.event.pull_request != null }}
+env:
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_PROFILE_RELEASE_DEBUG: '0'
+  CARGO_PROFILE_BENCH_DEBUG: '0'
+  SCCACHE_GHA_ENABLED: 'true'
+  SKIPPY_REQUIRE_SCCACHE: '1'
+  SKIPPY_CUDA_ARCHITECTURE_MODE: ${{ inputs.cuda_architecture_mode || 'native' }}
+  SKIPPY_CI_SOURCE_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || inputs.source_ref || github.sha }}
+  SKIPPY_ARTIFACT_SCOPE: ${{ inputs.artifact_scope || 'ci' }}
+  # Release builds report anonymous usage; every other build is keyless and
+  # reports nothing. The key is a public ingestion token, not a secret.
+  SKIPPY_POSTHOG_KEY: ${{ inputs.artifact_scope == 'release' && vars.SKIPPY_POSTHOG_KEY || '' }}
+jobs:
+  pr_image_builds:
+    permissions:
+      contents: read
+      packages: read
+    # Enter through a reusable already on main. GitHub resolves the outer
+    # caller's ref even when its job is skipped during the cutover PR.
+    if: >-
+      github.repository == 'Mesh-LLM/skippy' && github.event_name == 'pull_request' &&
+      vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' &&
+      startsWith(github.workflow_ref, 'Mesh-LLM/skippy/.github/workflows/ci-images-pr.yml@')
+    uses: ./.github/workflows/ci-image-builds.yml
+  changes:
+    name: Select checks by path
+    if: >-
+      github.repository == 'Mesh-LLM/skippy' &&
+      (github.event_name != 'pull_request' ||
+        vars.SKIPPY_DEPOT_RUNNERS_ENABLED != 'true' ||
+        startsWith(github.workflow_ref, 'Mesh-LLM/skippy/.github/workflows/ci-pr.yml@')) &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.id != github.event.repository.id || github.base_ref != 'main') &&
+      (github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.id == github.event.repository.id)
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      automation: ${{ steps.release.outputs.verified != 'true' && (!github.event.pull_request || steps.paths.outputs.automation == 'true') }}
+      code: ${{ steps.release.outputs.verified != 'true' && (!github.event.pull_request || steps.paths.outputs.code == 'true' || (github.event_name == 'pull_request' && steps.paths.outputs.packages == 'true')) }}
+      packages: ${{ steps.release.outputs.verified != 'true' && ((github.event_name == 'pull_request_target' && steps.paths.outputs.packages == 'true') || (github.event_name == 'push' && github.ref == 'refs/heads/main' && (steps.main_base.outputs.force == 'true' || steps.paths.outputs.packages == 'true' || steps.paths.outputs.inference == 'true' || steps.paths.outputs.packaging == 'true' || steps.paths.outputs.native == 'true'))) }}
+      native: ${{ steps.release.outputs.verified != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && (steps.main_base.outputs.force == 'true' || steps.paths.outputs.native == 'true') }}
+      hosted_requires_native: ${{ github.event_name == 'pull_request' && steps.paths.outputs.packages == 'true' }}
+    steps:
+      - name: Reject custom candidate inputs on pull requests
+        if: >-
+          github.event.pull_request != null &&
+          (inputs.source_ref != '' || inputs.candidate_artifact != '' || inputs.candidate_sha != '' ||
+            (inputs.artifact_scope != '' && inputs.artifact_scope != 'ci'))
+        run: |
+          echo '::error::Pull requests must use the source from their event.'
+          exit 1
+      - name: Reuse qualification from the exact promoted release
+        id: release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            try {
+              const repo = context.repo;
+              const sha = context.sha;
+              const { data: candidate } = await github.rest.repos.getCommit({ ...repo, ref: sha });
+              const runId = candidate.commit.message.match(/\n\nSkippy-Release-Run: ([1-9][0-9]*)\s*$/)?.[1];
+              if (!runId || candidate.parents.length !== 1 ||
+                  candidate.parents[0].sha !== context.payload.before) return;
+              const { data: run } = await github.rest.actions.getWorkflowRun({ ...repo, run_id: runId });
+              if (run.path !== '.github/workflows/release.yml' || run.event !== 'workflow_dispatch' ||
+                  run.head_branch !== 'main' || run.head_sha !== context.payload.before ||
+                  run.head_repository?.full_name !== context.payload.repository.full_name) return;
+              const receipt = `validated-release-${sha}`;
+              const { data: result } = await github.rest.actions.listWorkflowRunArtifacts({
+                ...repo, run_id: runId, name: receipt,
+              });
+              if (result.artifacts.some(artifact => artifact.name === receipt && !artifact.expired)) {
+                core.info(`Release run ${runId} already validated ${sha}`);
+                core.setOutput('verified', 'true');
+              }
+            } catch (error) {
+              core.warning(`Release validation could not be verified. Running ordinary CI. ${error.message}`);
+            }
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        if: github.event.pull_request != null || (github.event_name == 'push' && steps.release.outputs.verified != 'true')
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          fetch-depth: ${{ github.event_name == 'push' && '0' || '1' }}
+          persist-credentials: false
+      - name: Find the last covered main commit
+        id: main_base
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.release.outputs.verified != 'true'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            await require('./.github/scripts/main-ci-base.cjs')({ github, context, core });
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+        id: paths
+        if: github.event.pull_request != null || (github.event_name == 'push' && steps.release.outputs.verified != 'true' && steps.main_base.outputs.force != 'true')
+        with:
+          base: ${{ steps.main_base.outputs.base }}
+          ref: ${{ github.sha }}
+          predicate-quantifier: some-with-excludes
+          filters: .github/path-filters.yml
+      - name: Verify the same-repository PR author
+        if: github.event_name == 'pull_request_target'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            const { pull_request: pr, repository } = context.payload;
+            if (pr.base.repo?.id !== repository.id || pr.head.repo?.id !== repository.id ||
+                !/^[a-f0-9]{40}$/.test(pr.head.sha)) {
+              throw new Error('Native CI requires a same-repository PR and an immutable source');
+            }
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+              ...context.repo, username: pr.user.login,
+            });
+            if (!['write', 'maintain', 'admin'].includes(data.permission)) {
+              throw new Error('Native CI requires a trusted PR author with repository write access');
+            }
+  automation:
+    name: Automation checks
+    needs: changes
+    if: needs.changes.outputs.automation == 'true'
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 15
+    env:
+      SKIPPY_PYTHON: python3
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+      - uses: ./.github/actions/source
+        with:
+          artifact: ${{ inputs.candidate_artifact }}
+          sha: ${{ inputs.candidate_sha }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.0'
+          package-manager-cache: false
+      - name: Install reporting test dependencies
+        run: just ci-automation-setup "$RUNNER_TEMP/skippy-automation"
+      - run: just ci-automation
+  plan:
+    name: Validate build targets
+    needs: changes
+    permissions:
+      contents: read
+      packages: read
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.packages == 'true'
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 20
+    env:
+      SKIPPY_CI_PROFILE: ${{ github.event.pull_request && 'pr' || inputs.profile || (github.event_name == 'schedule' && 'full' || 'pr') }}
+    outputs:
+      profile: ${{ steps.plan.outputs.profile }}
+      cpu_digest: ${{ steps.images.outputs.cpu }}
+      cuda12_digest: ${{ steps.images.outputs.cuda12 }}
+      cuda12_arm_digest: ${{ steps.images.outputs.cuda12_arm }}
+      cuda13_digest: ${{ steps.images.outputs.cuda13 }}
+      runtimes: ${{ steps.plan.outputs.runtimes }}
+      registry-owner: ${{ steps.registry.outputs.owner }}
+    steps:
+      - name: Resolve CI image namespace
+        id: registry
+        shell: bash
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - name: Validate CUDA architecture mode
+        shell: bash
+        run: |
+          case "$SKIPPY_CUDA_ARCHITECTURE_MODE" in
+            native|release) ;;
+            *) echo "::error::CUDA architecture mode must be native or release."; exit 1 ;;
+          esac
+      - name: Admit manual source
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Ad hoc CI must run from the protected main branch."
+            exit 1
+          fi
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/source
+        with:
+          artifact: ${{ inputs.candidate_artifact }}
+          sha: ${{ inputs.candidate_sha }}
+      - id: plan
+        run: just ci-plan
+      - name: Authenticate compiler image lookup
+        if: needs.changes.outputs.code == 'true' || steps.plan.outputs.profile == 'full'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve compiler image digests
+        id: images
+        if: needs.changes.outputs.code == 'true' || steps.plan.outputs.profile == 'full'
+        shell: bash
+        env:
+          REGISTRY_OWNER: ${{ steps.registry.outputs.owner }}
+          PROFILE: ${{ steps.plan.outputs.profile }}
+        run: |
+          set -euo pipefail
+          resolve() {
+            local manifest digest
+            manifest=$(docker buildx imagetools inspect "ghcr.io/$REGISTRY_OWNER/skippy-ci-$2")
+            digest=$(awk '$1 == "Digest:" {print $2; exit}' <<< "$manifest")
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            echo "$1=$digest" >> "$GITHUB_OUTPUT"
+          }
+          resolve cpu cpu:latest
+          if [[ "$PROFILE" == full ]]; then
+            resolve cuda12 cuda12:latest
+            resolve cuda12_arm cuda12:latest-arm64
+            resolve cuda13 cuda13:latest
+          fi
+  quality:
+    name: Quality canary
+    needs: [changes, plan, automation]
+    if: needs.changes.outputs.code == 'true'
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CMAKE_BUILD_PARALLEL_LEVEL: '2'
+      CTEST_PARALLEL_LEVEL: '2'
+      CC: /usr/lib/llvm-22/bin/clang
+      CXX: /usr/lib/llvm-22/bin/clang++
+      SKIPPY_REWRITER_LLVM_PREFIX: /usr/lib/llvm-22
+      LIBCLANG_PATH: /usr/lib/llvm-22/lib
+      SKIPPY_REQUIRE_SCCACHE: '1'
+      SCCACHE_GHA_ENABLED: 'true'
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/${{ needs.plan.outputs.registry-owner }}/skippy-ci-cpu@${{ needs.plan.outputs.cpu_digest }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    # Cold caches can take more than 30 minutes for lint and tests alone.
+    timeout-minutes: ${{ needs.plan.outputs.profile == 'pr' && 60 || 180 }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/source
+        with:
+          artifact: ${{ inputs.candidate_artifact }}
+          sha: ${{ inputs.candidate_sha }}
+      - name: Verify image toolchain and cache identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --version
+          just --version
+          sccache --version
+          "$CC" --version
+          "$CXX" --version
+          "$SKIPPY_REWRITER_LLVM_PREFIX/bin/clang-format" --version
+          "$SKIPPY_REWRITER_LLVM_PREFIX/bin/clang-tidy" --version
+          "$SKIPPY_REWRITER_LLVM_PREFIX/bin/clang" --version
+          test -r "$SKIPPY_REWRITER_LLVM_PREFIX/lib/cmake/llvm/LLVMConfig.cmake"
+          test -r "$SKIPPY_REWRITER_LLVM_PREFIX/lib/cmake/clang/ClangConfig.cmake"
+          image_id="$(cat /etc/skippy-ci-image-id)"
+          test -n "$image_id"
+          echo "SKIPPY_TOOLCHAIN_CACHE_KEY=$image_id" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/cache
+        with:
+          scope: quality-${{ needs.plan.outputs.cpu_digest }}
+          download-scope: quality-container
+          build-paths: |
+            target/debug
+            skippy-api-rs/target/debug
+      - uses: ./.github/actions/sccache
+        with:
+          scope: quality-${{ runner.os }}-${{ runner.arch }}-${{ env.SKIPPY_TOOLCHAIN_CACHE_KEY }}
+      - uses: ./.github/actions/native-source
+      - run: just llama-prepare
+      - run: just skippy-ffi-bindgen-check
+      - id: lint
+        run: just lint
+      - name: Report sccache statistics before tests
+        if: ${{ !cancelled() && env.SCCACHE != '' }}
+        uses: ./.github/actions/report-sccache
+        with:
+          phase: ${{ steps.lint.outcome == 'skipped' && 'setup' || 'lint' }}
+      - id: test
+        run: just test
+      - name: Report sccache statistics after tests
+        if: ${{ !cancelled() && (steps.test.outcome == 'success' || steps.test.outcome == 'failure') }}
+        uses: ./.github/actions/report-sccache
+        with:
+          phase: tests
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: always()
+        with:
+          name: ${{ env.SKIPPY_ARTIFACT_SCOPE }}-quality-evidence
+          path: |
+            target/ci-evidence/**
+            target/skippy-api-build/Testing/**
+            target/skippy-llama-api-build/Testing/**
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+  native_contracts:
+    name: Check llama.cpp Graph Contracts, patches, and API docs
+    needs: [plan, quality, changes]
+    if: needs.plan.outputs.profile == 'full' || needs.changes.outputs.native == 'true'
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-8' || 'ubuntu-24.04' }}
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/${{ needs.plan.outputs.registry-owner }}/skippy-ci-cpu@${{ needs.plan.outputs.cpu_digest }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_BUILD_JOBS: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && '4' || '2' }}
+      CMAKE_BUILD_PARALLEL_LEVEL: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && '4' || '2' }}
+      CTEST_PARALLEL_LEVEL: '2'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/source
+        with:
+          artifact: ${{ inputs.candidate_artifact }}
+          sha: ${{ inputs.candidate_sha }}
+      - name: Identify the CPU toolchain image
+        run: |
+          image_id="$(cat /etc/skippy-ci-image-id)"
+          test -n "$image_id"
+          echo "SKIPPY_TOOLCHAIN_CACHE_KEY=$image_id" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/cache
+        with:
+          scope: native-contracts-${{ needs.plan.outputs.cpu_digest }}
+          download-scope: native-contracts
+      - uses: ./.github/actions/sccache
+        with:
+          scope: native-contracts-${{ runner.os }}-${{ runner.arch }}-${{ env.SKIPPY_TOOLCHAIN_CACHE_KEY }}
+      - uses: ./.github/actions/native-source
+      - run: just llama-check
+      - uses: ./.github/actions/report-sccache
+        if: ${{ !cancelled() && env.SCCACHE != '' }}
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: always()
+        with:
+          name: ${{ env.SKIPPY_ARTIFACT_SCOPE }}-native-contracts-evidence
+          path: |
+            target/ci-evidence/sccache-build.json
+            target/skippy-stage-rewriter-check/*.log
+            target/skippy-stage-rewriter-check/report*
+            target/skippy-stage-rewriter-check/graph-coverage.json
+            target/skippy-stage-rewriter-check/patch-drift.diff
+            target/skippy-stage-rewriter-check/changed-family-selection.json
+            target/skippy-stage-rewriter-check/generated-family-shards/**
+            target/skippy-stage-rewriter-check/tool-build/Testing/**
+            .deps/llama-build/**/Testing/**
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+  package_darwin_aarch64_cpu:
+    name: Build, package, and smoke · macOS ARM64 CPU
+    needs: [plan, quality]
+    if: needs.plan.outputs.profile == 'full'
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-macos-15' || 'macos-15' }}
+    timeout-minutes: 240
+    env:
+      SKIPPY_CI_PROFILE: ${{ needs.plan.outputs.profile }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/ci-package
+        with:
+          runtime-id: darwin-aarch64-cpu
+          host-id: darwin-aarch64
+          build-cli: 'true'
+          setup-host: 'true'
+          candidate-artifact: ${{ inputs.candidate_artifact }}
+          candidate-sha: ${{ inputs.candidate_sha }}
+  package_darwin_aarch64_metal:
+    name: Build, package, and smoke · macOS ARM64 Metal
+    needs: [plan, quality, package_darwin_aarch64_cpu, changes, automation]
+    if: >-
+      ${{ !cancelled() && needs.plan.result == 'success' && needs.automation.result == 'success' &&
+      ((needs.changes.outputs.code == 'true' && needs.quality.result == 'success') ||
+      (needs.changes.outputs.code == 'false' && needs.quality.result == 'skipped')) &&
+      ((needs.plan.outputs.profile == 'full' && needs.package_darwin_aarch64_cpu.result == 'success') ||
+      (needs.plan.outputs.profile == 'pr' && needs.changes.outputs.packages == 'true')) }}
+    runs-on:
+      group: jy-rnr_h7x5s2yx9gtkz3c
+      labels: ["self-hosted", "skippy-ephemeral", "macOS", "ARM64", "metal"]
+    timeout-minutes: 240
+    env:
+      SKIPPY_CI_PROFILE: ${{ needs.plan.outputs.profile }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/ci-package
+        with:
+          runtime-id: darwin-aarch64-metal
+          host-id: darwin-aarch64
+          build-cli: ${{ needs.plan.outputs.profile == 'pr' }}
+          candidate-artifact: ${{ inputs.candidate_artifact }}
+          candidate-sha: ${{ inputs.candidate_sha }}
+  package_linux_x86_64_cpu:
+    name: Build, package, and smoke · Linux x64 CPU
+    needs: [plan, quality]
+    if: needs.plan.outputs.profile == 'full'
+    # The shared CLI must also run in the Ubuntu 24.04 CUDA toolchain images.
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 240
+    env:
+      SKIPPY_CI_PROFILE: ${{ needs.plan.outputs.profile }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/ci-package
+        with:
+          runtime-id: linux-x86_64-cpu
+          host-id: linux-x86_64
+          build-cli: 'true'
+          setup-host: 'true'
+          candidate-artifact: ${{ inputs.candidate_artifact }}
+          candidate-sha: ${{ inputs.candidate_sha }}
+  package_linux_x86_64_cuda12:
+    name: Build, package, and smoke · Linux x64 CUDA 12
+    needs: [plan, quality, package_linux_x86_64_cpu]
+    if: needs.plan.outputs.profile == 'full'
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/${{ needs.plan.outputs.registry-owner }}/skippy-ci-cuda12@${{ needs.plan.outputs.cuda12_digest }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    timeout-minutes: 240
+    env:
+      SKIPPY_CI_PROFILE: ${{ needs.plan.outputs.profile }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/ci-package
+        with:
+          runtime-id: linux-x86_64-cuda12
+          host-id: linux-x86_64
+          smoke: artifact
+          containerized: 'true'
+          compiler-image-digest: ${{ needs.plan.outputs.cuda12_digest }}
+          candidate-artifact: ${{ inputs.candidate_artifact }}
+          candidate-sha: ${{ inputs.candidate_sha }}
+  release_smoke_linux_x86_64_cuda12:
+    name: Release GPU smoke · Linux x64 CUDA 12
+    needs: [package_linux_x86_64_cuda12]
+    if: inputs.artifact_scope == 'release'
+    runs-on:
+      group: jy-rnr_btc4xhvks1eer0j
+      labels: ["self-hosted", "skippy-ephemeral", "Linux", "X64", "runtime-image", "cuda12"]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/ci-smoke
+        with:
+          runtime_id: linux-x86_64-cuda12
+          download-package: 'true'
+          candidate_artifact: ${{ inputs.candidate_artifact }}
+          candidate_sha: ${{ inputs.candidate_sha }}
+  package_linux_x86_64_cuda13:
+    name: Build, package, and smoke · Linux x64 CUDA 13
+    needs: [plan, quality, package_linux_x86_64_cpu]
+    if: needs.plan.outputs.profile == 'full'
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/${{ needs.plan.outputs.registry-owner }}/skippy-ci-cuda13@${{ needs.plan.outputs.cuda13_digest }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    timeout-minutes: 240
+    env:
+      SKIPPY_CI_PROFILE: ${{ needs.plan.outputs.profile }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/ci-package
+        with:
+          runtime-id: linux-x86_64-cuda13
+          host-id: linux-x86_64
+          smoke: artifact
+          containerized: 'true'
+          compiler-image-digest: ${{ needs.plan.outputs.cuda13_digest }}
+          candidate-artifact: ${{ inputs.candidate_artifact }}
+          candidate-sha: ${{ inputs.candidate_sha }}
+  package_linux_aarch64_cpu:
+    name: Build, package, and smoke · Linux ARM64 CPU
+    needs: [plan, quality]
+    if: needs.plan.outputs.profile == 'full'
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-arm-4' || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 240
+    env:
+      SKIPPY_CI_PROFILE: ${{ needs.plan.outputs.profile }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/ci-package
+        with:
+          runtime-id: linux-aarch64-cpu
+          host-id: linux-aarch64
+          build-cli: 'true'
+          setup-host: 'true'
+          candidate-artifact: ${{ inputs.candidate_artifact }}
+          candidate-sha: ${{ inputs.candidate_sha }}
+  package_linux_aarch64_cuda12:
+    name: Build, package, and smoke · Linux ARM64 CUDA 12
+    needs: [plan, quality, package_linux_aarch64_cpu]
+    if: needs.plan.outputs.profile == 'full'
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-arm-4' || 'ubuntu-24.04-arm' }}
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/${{ needs.plan.outputs.registry-owner }}/skippy-ci-cuda12@${{ needs.plan.outputs.cuda12_arm_digest }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    timeout-minutes: 240
+    env:
+      SKIPPY_CI_PROFILE: ${{ needs.plan.outputs.profile }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/ci-package
+        with:
+          runtime-id: linux-aarch64-cuda12
+          host-id: linux-aarch64
+          smoke: artifact
+          containerized: 'true'
+          compiler-image-digest: ${{ needs.plan.outputs.cuda12_arm_digest }}
+          candidate-artifact: ${{ inputs.candidate_artifact }}
+          candidate-sha: ${{ inputs.candidate_sha }}
+  release_smoke_linux_aarch64_cuda12:
+    name: Release GPU smoke · Linux ARM64 CUDA 12
+    needs: [package_linux_aarch64_cuda12]
+    if: inputs.artifact_scope == 'release'
+    runs-on:
+      group: jy-rnr_pg90ves41xbxvwy
+      labels: ["self-hosted", "skippy-ephemeral", "Linux", "ARM64", "runtime-image", "cuda12"]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/ci-smoke
+        with:
+          runtime_id: linux-aarch64-cuda12
+          download-package: 'true'
+          candidate_artifact: ${{ inputs.candidate_artifact }}
+          candidate_sha: ${{ inputs.candidate_sha }}
+  package_linux_aarch64_cuda13:
+    name: Build, package, and smoke · Linux ARM64 CUDA 13
+    needs: [plan, quality, package_linux_aarch64_cpu, changes, automation]
+    if: >-
+      ${{ !cancelled() && needs.plan.result == 'success' && needs.automation.result == 'success' &&
+      ((needs.changes.outputs.code == 'true' && needs.quality.result == 'success') ||
+      (needs.changes.outputs.code == 'false' && needs.quality.result == 'skipped')) &&
+      ((needs.plan.outputs.profile == 'full' && needs.package_linux_aarch64_cpu.result == 'success') ||
+      (needs.plan.outputs.profile == 'pr' && needs.changes.outputs.packages == 'true')) }}
+    runs-on:
+      group: jy-rnr_8gvzbe9b9d79y0k
+      labels: ["self-hosted", "skippy-ephemeral", "Linux", "ARM64", "runtime-image", "cuda13"]
+    timeout-minutes: 240
+    env:
+      SKIPPY_CI_PROFILE: ${{ needs.plan.outputs.profile }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/ci-package
+        with:
+          runtime-id: linux-aarch64-cuda13
+          host-id: linux-aarch64
+          build-cli: ${{ needs.plan.outputs.profile == 'pr' }}
+          candidate-artifact: ${{ inputs.candidate_artifact }}
+          candidate-sha: ${{ inputs.candidate_sha }}
+  release_smoke_linux_x86_64_cuda13:
+    name: Release GPU smoke · Linux x64 CUDA 13
+    needs: [package_linux_x86_64_cuda13]
+    if: inputs.artifact_scope == 'release'
+    runs-on:
+      group: jy-rnr_p0zx3thw895vrka
+      labels: ["self-hosted", "skippy-ephemeral", "Linux", "X64", "runtime-image", "cuda13"]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SKIPPY_CI_SOURCE_REF }}
+          persist-credentials: false
+      - uses: ./.github/actions/ci-smoke
+        with:
+          runtime_id: linux-x86_64-cuda13
+          download-package: 'true'
+          candidate_artifact: ${{ inputs.candidate_artifact }}
+          candidate_sha: ${{ inputs.candidate_sha }}
+  gate:
+    name: ${{ needs.plan.outputs.profile == 'full' && 'Full CI gate' || (github.event_name == 'pull_request_target' && 'Same-repository CI' || 'CI') }}
+    needs: [
+      changes, automation, plan, quality, native_contracts,
+      package_darwin_aarch64_cpu, package_darwin_aarch64_metal,
+      package_linux_x86_64_cpu, package_linux_x86_64_cuda12, package_linux_x86_64_cuda13,
+      package_linux_aarch64_cpu, package_linux_aarch64_cuda12, package_linux_aarch64_cuda13,
+      release_smoke_linux_x86_64_cuda12, release_smoke_linux_aarch64_cuda12, release_smoke_linux_x86_64_cuda13
+    ]
+    if: always() && needs.changes.result != 'skipped'
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          CHECK_RESULTS: ${{ toJSON(needs) }}
+          RELEASE_SMOKE: ${{ inputs.artifact_scope == 'release' }}
+        with:
+          script: |
+            const needs = JSON.parse(process.env.CHECK_RESULTS);
+            const paths = needs.changes?.outputs;
+            if (needs.changes?.result !== 'success' ||
+                !['true', 'false'].includes(paths?.automation) ||
+                !['true', 'false'].includes(paths?.code) ||
+                !['true', 'false'].includes(paths?.packages) ||
+                !['true', 'false'].includes(paths?.native) ||
+                !['true', 'false'].includes(paths?.hosted_requires_native)) {
+              throw new Error('Path selection failed or did not report all decisions');
+            }
+            const packages = paths.packages === 'true';
+            const automation = paths.automation === 'true';
+            const code = paths.code === 'true';
+            const selected = code || packages;
+            const profile = needs.plan?.outputs?.profile;
+            if (selected && !['pr', 'full'].includes(profile)) throw new Error('Missing or invalid CI profile');
+            const full = selected && profile === 'full';
+            const release = process.env.RELEASE_SMOKE === 'true';
+            if (release && !full) throw new Error('Release validation requires full CI');
+
+            const prPackages = ['package_darwin_aarch64_metal', 'package_linux_aarch64_cuda13'];
+            const releaseSmokes = ['release_smoke_linux_x86_64_cuda12', 'release_smoke_linux_aarch64_cuda12', 'release_smoke_linux_x86_64_cuda13'];
+            const packageJobs = Object.keys(needs).filter(job => job.startsWith('package_'));
+            if (selected) {
+              const rows = JSON.parse(needs.plan.outputs.runtimes).include;
+              const matrixJobs = rows.map(row => 'package_' + row.id.replaceAll('-', '_'));
+              if (matrixJobs.length === 0 ||
+                  matrixJobs.length !== packageJobs.length || new Set(matrixJobs).size !== matrixJobs.length ||
+                  matrixJobs.some(job => !packageJobs.includes(job))) {
+                throw new Error('Package jobs do not match the active runtime matrix');
+              }
+            }
+
+            const requireResult = (job, required) => {
+              const expected = required ? 'success' : 'skipped';
+              if (needs[job]?.result !== expected) {
+                throw new Error(`${job} must be ${expected}; got ${needs[job]?.result}`);
+              }
+            };
+            requireResult('automation', automation);
+            requireResult('plan', selected);
+            requireResult('quality', code);
+            requireResult('native_contracts', full || paths.native === 'true');
+            for (const job of prPackages) if (!packageJobs.includes(job)) throw new Error(`Missing package job ${job}`);
+            for (const job of packageJobs) requireResult(job, full || (packages && prPackages.includes(job)));
+            for (const job of releaseSmokes) requireResult(job, release);
+            if (paths.hosted_requires_native === 'true') {
+              throw new Error('These changes require native hardware qualification on an isolated runner');
+            }

@@ -1,0 +1,144 @@
+name: CI images
+on:
+  pull_request:
+    paths: ['.github/workflows/ci-images.yml', '.github/workflows/ci-images-pr.yml', '.github/workflows/ci-image-builds.yml', 'ci/image-targets.json', 'ci/Dockerfile*', 'ci/targets.json', 'scripts/ci-preserve-cuda-license.sh', 'rust-toolchain.toml', 'ci/images.just']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/ci-images.yml', '.github/workflows/ci-images-pr.yml', '.github/workflows/ci-image-builds.yml', 'ci/image-targets.json', 'ci/Dockerfile*', 'ci/targets.json', 'scripts/ci-preserve-cuda-license.sh', 'rust-toolchain.toml', 'ci/images.just']
+  workflow_dispatch:
+    inputs:
+      build_only:
+        description: Build and test images without publishing
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: read
+concurrency:
+  group: skippy-ci-images-${{ github.workflow }}-${{ github.event.pull_request.number || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  cpu-build:
+    if: >-
+      (github.event_name != 'pull_request' || vars.SKIPPY_DEPOT_RUNNERS_ENABLED != 'true') &&
+      !(github.repository == 'Mesh-LLM/skippy' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.build_only)))
+    uses: ./.github/workflows/ci-image-builds.yml
+    with:
+      image-set: cpu
+  gpu-build:
+    if: github.event_name != 'pull_request' || vars.SKIPPY_DEPOT_RUNNERS_ENABLED != 'true'
+    uses: ./.github/workflows/ci-image-builds.yml
+    with:
+      image-set: gpu
+      build-images: ${{ !(github.repository == 'Mesh-LLM/skippy' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.build_only))) }}
+  cpu-publish:
+    name: Build, test and publish CPU image
+    if: >-
+      github.repository == 'Mesh-LLM/skippy' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.build_only))
+    runs-on: ${{ vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04' }}
+    timeout-minutes: 65
+    permissions:
+      contents: read
+      packages: write
+    env:
+      SKIPPY_CI_IMAGE_ID: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+      SOURCE_REVISION: ${{ github.sha }}
+      SKIPPY_CI_CACHE_REF: ghcr.io/mesh-llm/skippy-ci-cpu:latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build CPU image
+        run: just --justfile ci/images.just --working-directory . ci-image-build
+      - name: Smoke test CPU image
+        run: time just --justfile ci/images.just --working-directory . ci-image-smoke
+      - name: Verify and publish smoke-tested image
+        run: |
+          set -euo pipefail
+          local_image=skippy-ci-cpu:build
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$local_image")" = "$GITHUB_SHA"
+          image="${SKIPPY_CI_CACHE_REF%:*}"
+          latest_tag="${SKIPPY_CI_CACHE_REF##*:}"
+          build_tag="build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT${latest_tag#latest}"
+          docker image tag "$local_image" "$image:$build_tag"
+          docker image push "$image:$build_tag"
+          docker image tag "$local_image" "$SKIPPY_CI_CACHE_REF"
+          docker image push "$SKIPPY_CI_CACHE_REF"
+
+  gpu-publish:
+    name: Build, test and publish ${{ matrix.backend }} image (${{ matrix.arch }})
+    needs: gpu-build
+    if: >-
+      github.repository == 'Mesh-LLM/skippy' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.build_only))
+    runs-on: >-
+      ${{ matrix.arch == 'arm64' && (vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-arm-4' || 'ubuntu-24.04-arm') ||
+          (vars.SKIPPY_DEPOT_RUNNERS_ENABLED == 'true' && 'depot-ubuntu-24.04-4' || 'ubuntu-24.04') }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.gpu-build.outputs.gpu-matrix) }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      SKIPPY_CI_IMAGE_ID: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.backend }}-${{ matrix.arch }}
+      SOURCE_REVISION: ${{ github.sha }}
+      SKIPPY_CI_CACHE_REF: ghcr.io/mesh-llm/skippy-ci-${{ matrix.backend }}:${{ matrix.arch == 'arm64' && 'latest-arm64' || 'latest' }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache: 'false'
+      - name: Free unused runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          df -h /
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build image
+        env:
+          BACKEND: ${{ matrix.backend }}
+          ARCH: ${{ matrix.arch }}
+          TOOLKIT_BASE: ${{ matrix.toolkit_base }}
+          TOOLKIT_VERSION: ${{ matrix.toolkit_version }}
+        run: just --justfile ci/images.just --working-directory . ci-gpu-image-build "$BACKEND" "$TOOLKIT_BASE" "$TOOLKIT_VERSION" "$ARCH"
+      - name: Smoke test image
+        run: time just --justfile ci/images.just --working-directory . ci-gpu-image-smoke '${{ matrix.backend }}' '${{ matrix.arch }}'
+      - name: Verify and publish smoke-tested image
+        env:
+          BACKEND: ${{ matrix.backend }}
+          ARCH: ${{ matrix.arch }}
+          TOOLKIT_VERSION: ${{ matrix.toolkit_version }}
+        run: |
+          set -euo pipefail
+          local_image="skippy-ci-$BACKEND:build"
+          test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$local_image")" = "linux/$ARCH"
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$local_image")" = "$GITHUB_SHA"
+          test "$(docker image inspect --format '{{index .Config.Labels "io.skippy.ci.backend"}}' "$local_image")" = "$BACKEND"
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$local_image")" = "$TOOLKIT_VERSION"
+          image="${SKIPPY_CI_CACHE_REF%:*}"
+          latest_tag="${SKIPPY_CI_CACHE_REF##*:}"
+          build_tag="build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT${latest_tag#latest}"
+          docker image tag "$local_image" "$image:$build_tag"
+          docker image push "$image:$build_tag"
+          docker image tag "$local_image" "$SKIPPY_CI_CACHE_REF"
+          docker image push "$SKIPPY_CI_CACHE_REF"

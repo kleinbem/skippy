@@ -1,0 +1,22 @@
+[package]
+name = "skippy-model"
+edition.workspace = true
+license.workspace = true
+publish = false
+version.workspace = true
+description = "Validated source checkpoint metadata and tensor access for Skippy"
+repository = "https://github.com/Mesh-LLM/skippy"
+homepage = "https://github.com/Mesh-LLM/skippy"
+readme = "README.md"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+memmap2 = "0.9.11"
+safetensors = "0.8.0"
+serde.workspace = true
+serde_json.workspace = true
+skippy-package-format = { path = "../skippy-package-format", version = "0.80.0" }
+
+sha2.workspace = true
+libc = "0.2"

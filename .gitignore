@@ -1,0 +1,17 @@
+/.deps/
+/.scratch/
+/target/
+/dist/
+/llama.cpp/
+/llama.cpp-rpc-b2b/
+/canary-source/
+/evals/results/
+/.venv/
+/.pytest_cache/
+__pycache__/
+*.pyc
+.DS_Store
+.idea/
+.zed/
+compile_commands.json
+/skippy_api/.cache/

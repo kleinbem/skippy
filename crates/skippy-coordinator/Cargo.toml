@@ -1,0 +1,14 @@
+[package]
+name = "skippy-coordinator"
+edition.workspace = true
+license.workspace = true
+publish = false
+readme = "README.md"
+version.workspace = true
+description = "Coordination primitives for Skippy staged runtime execution"
+repository = "https://github.com/Mesh-LLM/skippy"
+homepage = "https://github.com/Mesh-LLM/skippy"
+
+[dependencies]
+thiserror = "2"
+skippy-model-artifact = { path = "../skippy-model-artifact", version = "0.80.0" }

@@ -1,0 +1,351 @@
+# skippy-native-runtime
+
+Shared native runtime manifest, host profile, resolver, cache, and load-plan
+policy for Skippy and embedding applications.
+
+This crate is the source of truth for selecting native runtimes. CLI install,
+SDK serving install, dynamic loading, and autoupdate should all use this same
+contract instead of carrying their own CUDA/ROCm/Vulkan detection logic.
+
+## Native Runtimes
+
+A native runtime is a release artifact containing patched llama.cpp/Skippy
+shared libraries for one platform/backend lane. The `skippy` binary can stay
+one artifact per OS/architecture; native runtimes carry the backend-specific
+matrix:
+
+- `cpu`
+- `metal`
+- `cuda` with a CUDA toolkit major such as 12 or 13
+- `rocm` with optional GFX targets
+- `vulkan`
+
+Selection is a hard match on four things, and failing any one of them is a
+rejection rather than a lower rank: `release_version`, `skippy_abi`, platform
+(OS, architecture, target triple, minimum glibc), and the backend
+requirements the host must satisfy. `resolver.rs` returns the reason as a
+structured `CandidateRejection`.
+
+`release_version` is not only cache layout. Installed runtimes live under
+`<cache-root>/<release_version>/<runtime-id>/`, `NativeRuntimeCache::install_manifest`
+writes the *manifest's* version into that path, and the prune policy removes
+non-active version directories. `skippy-runtime-install` also treats
+`release_version` and `skippy_abi` together as the single "matches the current
+SDK" predicate. A runtime from a different Skippy release is therefore not
+selectable even when its Skippy ABI matches: it would be installed under a
+version directory the running host does not read. Expect a
+`ReleaseVersionMismatch` rejection (`Skippy version mismatch: expected X, found
+Y`) until the runtime is rebuilt or re-fetched for the host's own version.
+
+## Artifact Manifest
+
+Each packaged runtime directory contains `manifest.json`:
+
+```json
+{
+  "schema_version": 2,
+  "runtime": {
+    "id": "skippy-native-runtime-linux-x86_64-cuda13-sm120",
+    "release_version": "0.80.0",
+    "skippy_abi": "0.1.25",
+    "platform": {
+      "os": "linux",
+      "arch": "x86_64",
+      "target": "x86_64-unknown-linux-gnu",
+      "min_glibc": "2.38"
+    },
+    "backend": {
+      "kind": "cuda",
+      "cuda": {
+        "toolkit_major": 13,
+        "min_driver": "580.0",
+        "gpu_arches": ["sm_120"]
+      }
+    },
+    "rank": 0,
+    "libraries": [
+      "lib/libcudart.so.13",
+      "lib/libcublasLt.so.13",
+      "lib/libcublas.so.13",
+      "lib/libllama.so"
+    ]
+  }
+}
+```
+
+CPU uses:
+
+```json
+"backend": { "kind": "cpu" }
+```
+
+ROCm uses:
+
+```json
+"backend": {
+  "kind": "rocm",
+  "rocm": {
+    "version": "6.4",
+    "gpu_arches": ["gfx1100"]
+  }
+}
+```
+
+Important fields:
+
+- `id`: stable runtime ID used for explicit selection and cache paths.
+- `skippy_abi`: exact ABI version required by the loader.
+- `platform`: OS/arch/optional Rust target triple.
+- `platform.min_glibc`: observed minimum glibc major.minor required by packaged Linux ELF libraries and tools. Older release manifests may omit it and remain parseable for legacy catalog resolution, but automatic startup refuses to load a locally installed Linux artifact without this metadata.
+- `backend`: structured backend requirements.
+- `rank`: optional rank adjustment. Higher compatible ranks win.
+- `libraries`: runtime-relative load-order library paths. Linux CUDA manifests
+  list the redistributable toolkit closure before `libllama.so`; the NVIDIA
+  driver library (`libcuda.so.1`) remains host-owned. Redistributed NVIDIA
+  objects remain byte-for-byte unchanged and the artifact includes the CUDA
+  distribution license under `licenses/`.
+- `url` and `sha256`: populated in release manifests for downloads.
+
+## Release Manifest
+
+Release jobs publish `native-runtimes.json`:
+
+```json
+{
+  "schema_version": 2,
+  "release_version": "0.80.0",
+  "skippy_abi": "0.1.25",
+  "artifacts": [
+    {
+      "id": "skippy-native-runtime-linux-x86_64-cpu",
+      "release_version": "0.80.0",
+      "skippy_abi": "0.1.25",
+      "platform": { "os": "linux", "arch": "x86_64" },
+      "backend": { "kind": "cpu" },
+      "rank": 0,
+      "libraries": ["lib/libllama.so"],
+      "url": "https://github.com/Mesh-LLM/skippy/releases/download/v0.80.0/skippy-v0.80.0-linux-x86_64-cpu.tar.gz",
+      "sha256": "2f1c..."
+    }
+  ]
+}
+```
+
+## Host Profile
+
+Selection evaluates artifacts against `HostRuntimeProfile`:
+
+```rust
+use skippy_native_runtime::{
+    HostCudaProfile, HostRuntimeProfile, NativeRuntimeBackendKind,
+};
+use std::collections::BTreeSet;
+
+let profile = HostRuntimeProfile {
+    os: "linux".to_string(),
+    arch: "x86_64".to_string(),
+    target_triple: Some("x86_64-unknown-linux-gnu".to_string()),
+    glibc_version: Some("2.39".to_string()),
+    available_flavors: BTreeSet::from([
+        NativeRuntimeBackendKind::Cpu,
+        NativeRuntimeBackendKind::Cuda,
+    ]),
+    gpus: Vec::new(),
+    cuda: Some(HostCudaProfile {
+        toolkit_majors: BTreeSet::from([12]),
+        driver_max_major: Some(12),
+        driver_version: None,
+        gpu_arches: BTreeSet::from(["sm_90".to_string()]),
+    }),
+    rocm: None,
+    vulkan: None,
+};
+```
+
+`skippy-hardware-profile` builds this profile for real hosts. It supports
+explicit environment overrides for CI/release testing, including
+`SKIPPY_CUDA_TOOLKIT_MAJOR`, `SKIPPY_CUDA_TOOLKIT_MAJORS`,
+`SKIPPY_CUDA_DRIVER_MAX_MAJOR`, `SKIPPY_CUDA_GPU_ARCHES`,
+`SKIPPY_ROCM_GPU_ARCHES`, and `SKIPPY_VULKAN_AVAILABLE`.
+
+### ROCm GPU architectures
+
+ROCm runtimes carry kernels for a fixed list of GPU architectures and have no
+portable fallback, so a ROCm runtime is only selected when every detected AMD
+GPU architecture is in its list. Linux reads them from the KFD topology; Windows
+asks the HIP runtime that ships with AMD's driver, in a child process. When no
+architecture is detected, the ROCm runtime is not selected;
+`SKIPPY_ROCM_GPU_ARCHES` (comma-separated, for example `gfx1100`) supplies
+them by hand.
+
+CUDA runtimes list GPU architectures too. When none is detected (the compute
+capability comes from `nvidia-smi`), a CUDA runtime that lists any is not
+selected; `SKIPPY_CUDA_GPU_ARCHES` (comma-separated, for example `87`)
+supplies them by hand.
+
+### CUDA toolkit vs driver
+
+`toolkit_majors` and `driver_max_major` are deliberately separate:
+
+- `toolkit_majors` — CUDA majors whose runtime libraries are actually installed
+  (probed from `libcudart.so.<major>` sonames and `/usr/local/cuda-<version>`).
+- `driver_max_major` — the newest CUDA the installed driver supports, from
+  `nvidia-smi`. This is an upper bound only.
+
+Linux CUDA native runtimes bundle the redistributable `libcudart`, `libcublas`,
+`libcublasLt`, and their toolkit dependency closure. The NVIDIA driver library
+(`libcuda.so.1`) remains host-owned. Windows runtimes likewise ship their
+redistributable toolkit DLLs, so both platforms can load on a driver-only host
+when the driver is new enough to run the selected toolkit major.
+
+The resolver prefers a matching installed toolkit when one is present, but a
+complete self-contained artifact can use the driver's maximum supported major.
+A CUDA 13 driver with a CUDA 12 toolkit therefore chooses cuda12; a driver-only
+host can choose cuda13 when the packaged artifact contains the CUDA 13 closure.
+
+## Resolution
+
+Use `NativeRuntimeResolver` when the caller needs both the selected artifact and
+where it should come from:
+
+```rust
+use skippy_native_runtime::{
+    NativeRuntimeCache, NativeRuntimeReleaseManifest, NativeRuntimeResolver,
+    RuntimeSelection,
+};
+use std::path::PathBuf;
+
+# fn example(
+#     profile: skippy_native_runtime::HostRuntimeProfile,
+#     manifest: NativeRuntimeReleaseManifest,
+# ) -> anyhow::Result<()> {
+let cache = NativeRuntimeCache::new("/tmp/skippy/native-runtimes");
+let resolution = NativeRuntimeResolver::new("0.80.0", profile, manifest, cache)
+    .with_skippy_abi_version("0.1.25")
+    .with_bundle_dirs(vec![PathBuf::from("./skippy-native-runtime-linux-x86_64-cpu")])
+    .resolve(&RuntimeSelection::Recommended)?;
+
+println!("selected {}", resolution.selected.id);
+# Ok(())
+# }
+```
+
+Selection strings accepted by `RuntimeSelection::parse`:
+
+- `recommended`
+- `cpu`
+- `metal`
+- `cuda`
+- `cuda12`
+- `cuda13`
+- `rocm`
+- `vulkan`
+- `exact:<runtime-id>`
+
+Compatibility checks:
+
+- exact Skippy ABI
+- OS/arch/target triple
+- Linux glibc version when both the artifact requirement and host detection are known
+- automatic startup requires glibc metadata on locally installed Linux artifacts
+- backend kind support
+- CUDA toolkit major
+- CUDA SM architecture
+- ROCm GFX architecture
+- Vulkan availability
+- explicit selection policy
+
+Every candidate is returned in `NativeRuntimeResolution::evaluated` with
+structured rejection reasons for `skippy runtime list`, `skippy doctor`, SDK
+diagnostics, and support output.
+
+## Cache Layout
+
+Installed runtimes are stored under:
+
+```text
+<cache-root>/<release_version>/<runtime-id>/
+  manifest.json
+  lib/...
+```
+
+`release_version` remains part of the cache layout and prune policy so upgrading
+Skippy can install the newly selected runtime, switch to it, and remove older
+runtime caches after success.
+
+`release_version` is always the Skippy workspace version: the host reads it from
+its own crate version and the packaging script stamps it from `Cargo.toml`.
+Every Skippy release is a new runtime identity, so a runtime cached by an
+earlier release is never reused, even when its native contents are unchanged.
+An upgraded host with no network needs the matching runtime supplied first
+(`--runtime-bundle` or a pre-populated cache); it does not fall back to an
+older release's cache.
+
+## Load Plan Boundary
+
+This crate does not load dynamic libraries. `InstalledNativeRuntime::load_plan`
+validates `runtime.libraries` and returns absolute paths for the Skippy FFI
+loader:
+
+```rust
+# fn example(installed: skippy_native_runtime::InstalledNativeRuntime) -> anyhow::Result<()> {
+let plan = installed.load_plan()?;
+for library in plan.libraries {
+    println!("load {}", library.display());
+}
+# Ok(())
+# }
+```
+
+## Packaging
+
+Package and verify a runtime:
+
+```bash
+scripts/package-native-runtime.sh \
+  --build \
+  --backend cuda \
+  --target x86_64-unknown-linux-gnu \
+  --out dist/native-runtimes
+
+scripts/verify-native-runtime-package.sh dist/native-runtimes/*.tar.gz
+```
+
+Linux runtime packages must be relocatable from the installed cache. Skippy's
+ELF shared libraries use `$ORIGIN` in their runtime search path so sibling
+libraries under `lib/` resolve without requiring users, CI, or SDK smoke tests
+to set `LD_LIBRARY_PATH`. Redistributed NVIDIA libraries are loaded first from
+their manifest paths and remain byte-for-byte unchanged. The package verifier
+rejects absolute build or CI `RPATH`/`RUNPATH` entries and proves that the
+declared dependency-first load plan closes every packaged CUDA dependency while
+`LD_LIBRARY_PATH` is absent.
+
+CUDA lanes use `SKIPPY_CUDA_TOOLKIT_MAJOR` to emit IDs such as `cuda12` or
+`cuda13`. `--backend cuda-blackwell` defaults to `cuda13-sm120`.
+
+Distributions that build the runtime from source and install it next to
+`skippy` can keep their library paths and skip the offline model package
+tool (such packages are not relocatable, so not for the release catalog):
+
+```bash
+scripts/package-native-runtime.sh --backend vulkan --out "$prefix/share/skippy/runtimes" \
+  --keep-runpath --no-model-package-tool
+```
+
+`--id-suffix NAME` appends `-NAME` to the runtime id (and to its directory and
+archive), so `skippy runtime list` tells the distribution's build apart from
+the release runtime of the same backend. `SKIPPY_NATIVE_RUNTIME_RANK` sets
+the manifest's rank (default 0); among compatible runtimes the highest rank
+wins, so a distribution can make its bundle preferred over a newer catalog
+entry:
+
+```bash
+SKIPPY_NATIVE_RUNTIME_RANK=1000 scripts/package-native-runtime.sh --backend vulkan \
+  --out "$prefix/share/skippy/runtimes" --keep-runpath --no-model-package-tool \
+  --id-suffix nixpkgs
+```
+
+The release workflow writes the release manifest (`scripts/ci-release.py`). Each
+entry is the manifest of the runtime inside one release archive, with `url` and
+`sha256` naming that `skippy-<tag>-<variant>.tar.gz`. The installer downloads the
+archive and installs the one runtime it carries.

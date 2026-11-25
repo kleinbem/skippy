@@ -1,0 +1,170 @@
+---
+title: Run models
+description: Resolve local files, Hugging Face references, and managed downloads.
+---
+
+# Run models
+
+Skippy can serve a model from its catalog, an exact Hugging Face repository
+reference, or an existing local file. The source identifies the model bytes;
+the runtime and serving settings determine how those bytes execute.
+
+Use a [catalog](https://huggingface.co/datasets/meshllm/catalog) name for the
+shortest supported path, a Hugging Face reference when you need a particular
+repository and quantization, and a local path for models you already manage.
+
+## Choose a model source
+
+```console
+skippy serve --model Qwen3-0.6B-Q4_K_M
+skippy serve --model unsloth/Qwen3-8B-GGUF:Q4_K_M
+skippy serve --model /models/qwen3-8b-q4_k_m.gguf
+```
+
+Remote GGUF files resolve to an immutable revision and are cached before
+loading. Serving the same exact reference reuses the Hugging Face cache.
+
+To serve several local models on one listener, put them in a single
+[serving settings file](/configuration/#serve-multiple-local-models) and run
+`skippy serve --settings serving.toml`.
+
+## Migrate a SafeTensors checkpoint
+
+Skippy serves GGUF models only. If you have a SafeTensors checkpoint, choose
+a published GGUF for the same model or convert a supported checkpoint offline
+with `skippy-quantize`. For multipart GGUFs, pass the first shard.
+[Convert a SafeTensors checkpoint](/running-models/quantization/#start-from-safetensors)
+
+## Choose how models are loaded
+
+List Hugging Face references, catalog names, or local GGUF paths in one
+settings file to load several models at startup. Clients select a model by ID
+on the same API address. Use a managed server when you need to load, drain,
+or unload models while the listener is running.
+[Multi-model settings](/configuration/#serve-multiple-local-models) · [Managed serving commands](/cli/#serve-managed-and-manage)
+
+## Load a model on demand
+
+For an infrequently used model, defer native loading until the first inference
+request and release it after a minute of inactivity.
+
+```console
+skippy serve --model-path /models/model.gguf --on-demand --idle-evict-secs 60
+```
+
+Skippy acquires and prepares the model source at startup. Concurrent first
+requests share one native load. Active requests and response streams keep the
+model resident. After eviction, the next request loads it again. Omit
+`--on-demand` to load at startup and still evict idle models.
+
+Residency controls require a public server for one unsplit model and a local
+source of known size. Select a serving mode without `--prompt` or
+`--stage-transport`. A residency budget below the model's source size rejects
+the load. Actual memory use also includes runtime allocations.
+[Residency options](/configuration/reference/#execution)
+
+## Discover and manage models
+
+Skippy uses the Mesh LLM catalog for curated names and recommendations by
+default:
+
+```console
+skippy models recommended
+```
+
+`recommended` shows curated starting points from the selected catalog.
+
+You can provide your own catalog by creating a Hugging Face dataset repository
+with the same format as
+[meshllm/catalog](https://huggingface.co/datasets/meshllm/catalog), then setting
+the repository as an override:
+
+```console
+export SKIPPY_MODEL_CATALOG=your-org/your-catalog
+skippy models recommended
+```
+
+Catalog caches are kept separately by repository, so changing the override does
+not mix entries from different catalogs.
+
+Use `search` when you know a family or keyword but not the exact repository:
+
+```console
+skippy models search qwen --limit 10
+```
+
+Search queries Hugging Face for GGUF models. Once you have a
+candidate, resolve the exact artifact, quantization, revision, and expected
+files before downloading it:
+
+```console
+skippy models show unsloth/Qwen3-8B-GGUF:Q4_K_M
+skippy models download unsloth/Qwen3-8B-GGUF:Q4_K_M
+```
+
+`show` is read-only. `download` verifies and stores the selected files in the
+shared Hugging Face cache so later serving can reuse them without another
+download.
+
+Inspect and maintain the local cache separately:
+
+```console
+skippy models installed
+skippy models updates --check
+skippy models cleanup --unused-since 30d
+```
+
+`installed` reports the model references Skippy can resolve locally.
+`updates --check` compares cached references with upstream revisions without
+downloading changes. `cleanup` finds managed model files that have not been used
+within the selected period.
+
+Cleanup and deletion preview their targets by default. Review the selected
+files before adding `--yes`; Skippy never deletes a remote repository.
+
+## Automatic resource planning
+
+For a local GGUF, Skippy sizes one unified KV pool from model metadata, weight
+footprint, and available device memory, then chooses context and concurrency
+defaults. Override those decisions only when you have a measured reason:
+
+```console
+skippy serve \
+  --model unsloth/Qwen3-8B-GGUF:Q4_K_M \
+  --ctx-size 32768 \
+  --generation-concurrency 2
+```
+
+Inspect the resolved launch before model load with:
+
+```console
+skippy serve --settings serve.toml --print-effective-config
+```
+
+## How model resolution works
+
+Skippy resolves a remote reference to an immutable repository revision,
+selects the requested artifacts, verifies the downloaded files, and records
+the resulting model identity. Local files are read directly but still pass
+model admission and memory planning before the server becomes ready.
+
+For local GGUF models, the planner uses model metadata, weight footprint, and
+available device memory to choose a context size and generation concurrency.
+An explicit `--ctx-size` or `--generation-concurrency` overrides the matching
+automatic choice. If the requested model or context does not fit, Skippy fails
+the load instead of silently substituting another model.
+
+## Model command reference
+
+| Task | Command |
+| --- | --- |
+| Show recommended models | `skippy models recommended` |
+| Search Hugging Face | `skippy models search QUERY` |
+| Resolve an exact artifact | `skippy models show REFERENCE` |
+| Download before serving | `skippy models download REFERENCE` |
+| List cached models | `skippy models installed` |
+| Check cached refs for updates | `skippy models updates --check` |
+| Preview unused-file cleanup | `skippy models cleanup --unused-since 30d` |
+
+Skippy honors the standard Hugging Face cache and authentication settings.
+Model deletion and cleanup are previews until `--yes` is supplied.

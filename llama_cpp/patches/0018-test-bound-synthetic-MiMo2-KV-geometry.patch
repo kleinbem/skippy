@@ -1,0 +1,49 @@
+From 00e703893fb718537f9ee6e06f388b89c830d047 Mon Sep 17 00:00:00 2001
+From: Skippy CI <ci@skippy.local>
+Date: Tue, 17 Nov 2026 22:14:38 +1100
+Subject: [PATCH] test: bound MiMo2 KV geometry and derive fused MTP shape from
+ hparams
+
+---
+ tests/test-graph-contract-fixture.h | 6 +++++-
+ tests/test-llama-archs.cpp          | 7 +++++++
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/tests/test-graph-contract-fixture.h b/tests/test-graph-contract-fixture.h
+index c45915888..3a520bdda 100644
+--- a/tests/test-graph-contract-fixture.h
++++ b/tests/test-graph-contract-fixture.h
+@@ -135,7 +135,11 @@ static int save_graph_contract_fixture(llm_arch arch, const std::string & out, u
+     if (arch == LLM_ARCH_MIMO2 && mtp_layers) {
+         ggml_context_ptr fused(ggml_init({ggml_tensor_overhead() * mtp_layers, nullptr, true}));
+         for (uint32_t head = 0; head < mtp_layers; ++head) {
+-            auto * qkv = ggml_new_tensor_2d(fused.get(), GGML_TYPE_F32, width, 3 * width);
++            const uint32_t layer = layers + head;
++            const auto & hparams = model->hparams;
++            const int64_t qkv_width = hparams.n_embd_head_k(layer) * hparams.n_head(layer) +
++                    hparams.n_embd_k_gqa(layer) + hparams.n_embd_v_gqa(layer);
++            auto * qkv = ggml_new_tensor_2d(fused.get(), GGML_TYPE_F32, width, qkv_width);
+             ggml_format_name(qkv, "blk.%u.attn_qkv.weight", layers + head);
+             gguf_add_tensor(output.get(), qkv);
+         }
+diff --git a/tests/test-llama-archs.cpp b/tests/test-llama-archs.cpp
+index 779763267..7083fed91 100644
+--- a/tests/test-llama-archs.cpp
++++ b/tests/test-llama-archs.cpp
+@@ -387,6 +387,13 @@ static gguf_context_ptr get_gguf_ctx(
+             arch == LLM_ARCH_KOLIBRI1 || arch == LLM_ARCH_LIMITE || arch == LLM_ARCH_GEMMA4 || arch == LLM_ARCH_RICURSIVE) {
+         n_head_kv = 2; // GQA coverage
+     }
++    // Preserve the MiMo2 contract's full residual width, trunk and MTP depth
++    // without inheriting two 2048-wide KV heads in the 4096-wide fixture.
++    // GQA with 128-wide heads exercises the same graph contracts in bounded RAM.
++    if (contract_layers && arch == LLM_ARCH_MIMO2 && n_embd >= 256 && n_embd % 256 == 0) {
++        n_head = n_embd / 128;
++        n_head_kv = 2;
++    }
+     if (arch == LLM_ARCH_BEAM) {
+         n_head    = 4;
+         n_head_kv = 2;
+-- 
+2.54.0 (Apple Git-157)
+

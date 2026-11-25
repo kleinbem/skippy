@@ -1,0 +1,20 @@
+[package]
+name = "skippy-model-resolver"
+edition.workspace = true
+license.workspace = true
+publish = false
+version.workspace = true
+description = "Model reference resolution helpers for Skippy"
+repository = "https://github.com/Mesh-LLM/skippy"
+homepage = "https://github.com/Mesh-LLM/skippy"
+readme = "README.md"
+
+[dependencies]
+anyhow.workspace = true
+skippy-model-ref = { path = "../skippy-model-ref", version = "0.80.0"  }
+skippy-model-artifact = { path = "../skippy-model-artifact", version = "0.80.0"  }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

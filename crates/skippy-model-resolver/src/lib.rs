@@ -1,0 +1,21 @@
+pub mod catalog;
+pub mod hf_catalog;
+pub mod refs;
+pub mod resolve;
+pub mod startup;
+pub mod types;
+
+pub use catalog::{
+    CatalogEntry, CatalogPackage, CatalogSidecarAsset, CatalogSidecarRef, CatalogSource,
+    CatalogVariant, CuratedMeta,
+};
+pub use hf_catalog::HfCatalogProvider;
+pub use refs::{
+    file_basename, format_huggingface_display_ref, format_huggingface_exact_ref,
+    huggingface_resolve_url, parse_hf_resolve_url, parse_huggingface_file_ref,
+    parse_huggingface_repo_ref, parse_huggingface_repo_url, remote_filename,
+};
+pub use resolve::{CatalogProvider, MemoryCatalog, ModelResolver};
+pub use types::{
+    LocalGguf, LocalLayerPackage, ModelArtifactCandidate, RemoteGguf, RemoteLayerPackage,
+};

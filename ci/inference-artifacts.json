@@ -1,0 +1,201 @@
+{
+  "qwen35-08b": {
+    "repo": "unsloth/Qwen3.5-0.8B-GGUF",
+    "revision": "6ab461498e2023f6e3c1baea90a8f0fe38ab64d0",
+    "files": [
+      {
+        "path": "Qwen3.5-0.8B-Q4_K_M.gguf",
+        "sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517",
+        "size": 532517120
+      }
+    ],
+    "tokenizer_repo": "Qwen/Qwen3.5-0.8B",
+    "tokenizer_revision": "2fc06364715b967f1860aea9cf38778875588b17",
+    "layers": 24,
+    "activation_width": 1024,
+    "tokenizer_files": [
+      "chat_template.jinja",
+      "config.json",
+      "merges.txt",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "vocab.json"
+    ]
+  },
+  "qwen35-2b": {
+    "repo": "unsloth/Qwen3.5-2B-GGUF",
+    "revision": "f6d5376be1edb4d416d56da11e5397a961aca8ae",
+    "files": [
+      {
+        "path": "Qwen3.5-2B-Q4_K_M.gguf",
+        "sha256": "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223",
+        "size": 1280835840
+      }
+    ],
+    "tokenizer_repo": "Qwen/Qwen3.5-2B",
+    "tokenizer_revision": "15852e8c16360a2fea060d615a32b45270f8a8fc",
+    "layers": 24,
+    "activation_width": 2048,
+    "tokenizer_files": [
+      "chat_template.jinja",
+      "config.json",
+      "merges.txt",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "vocab.json"
+    ]
+  },
+  "qwen35-4b": {
+    "repo": "unsloth/Qwen3.5-4B-GGUF",
+    "revision": "e87f176479d0855a907a41277aca2f8ee7a09523",
+    "files": [
+      {
+        "path": "Qwen3.5-4B-Q4_K_M.gguf",
+        "sha256": "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
+        "size": 2740937888
+      }
+    ],
+    "tokenizer_repo": "Qwen/Qwen3.5-4B",
+    "tokenizer_revision": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+    "layers": 32,
+    "activation_width": 2560,
+    "tokenizer_files": [
+      "chat_template.jinja",
+      "config.json",
+      "merges.txt",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "vocab.json"
+    ]
+  },
+  "qwen35-9b": {
+    "repo": "unsloth/Qwen3.5-9B-GGUF",
+    "revision": "3885219b6810b007914f3a7950a8d1b469d598a5",
+    "files": [
+      {
+        "path": "Qwen3.5-9B-Q4_K_M.gguf",
+        "sha256": "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8",
+        "size": 5680522464
+      }
+    ],
+    "tokenizer_repo": "Qwen/Qwen3.5-9B",
+    "tokenizer_revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+    "layers": 32,
+    "activation_width": 4096,
+    "tokenizer_files": [
+      "chat_template.jinja",
+      "config.json",
+      "merges.txt",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "vocab.json"
+    ]
+  },
+  "qwen38-27b": {
+    "repo": "unsloth/Qwen3.8-27B-GGUF",
+    "revision": "4af51b3542f775b0a8e4b310bfb3f17e01c306c9",
+    "files": [
+      {
+        "path": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+        "sha256": "1bce504dfecd84153666928a41d8a66706f0158d3a317bc5196b72819d7dc529",
+        "size": 16564259744
+      }
+    ],
+    "tokenizer_repo": "Qwen/Qwen3.8-27B",
+    "tokenizer_revision": "37561816e66b5b9153b1b64c10968c18c1e6f4a0",
+    "layers": 64,
+    "activation_width": 5120,
+    "tokenizer_files": [
+      "chat_template.jinja",
+      "config.json",
+      "merges.txt",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "vocab.json"
+    ]
+  },
+  "qwen3-coder-30b-a3b": {
+    "repo": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+    "revision": "b17cb02dd882d5b6ab62fc777ad2995f19668350",
+    "files": [
+      {
+        "path": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+        "sha256": "fadc3e5f8d42bf7e894a785b05082e47daee4df26680389817e2093056f088ad",
+        "size": 18556689568
+      }
+    ],
+    "tokenizer_repo": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+    "tokenizer_revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+    "layers": 48,
+    "activation_width": 2048,
+    "tokenizer_files": [
+      "chat_template.jinja",
+      "config.json",
+      "merges.txt",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "vocab.json"
+    ]
+  },
+  "qwen36-35b-a3b": {
+    "repo": "unsloth/Qwen3.6-35B-A3B-GGUF",
+    "revision": "a483e9e6cbd595906af30beda3187c2663a1118c",
+    "files": [
+      {
+        "path": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "sha256": "ac0e2c1189e055faa36eff361580e79c5bd6f8e76bffb4ce547f167d53e31a61",
+        "size": 22134528992
+      }
+    ],
+    "tokenizer_repo": "Qwen/Qwen3.6-35B-A3B",
+    "tokenizer_revision": "345d467b117d1fd5eda9b879a5988de9ae5f47a7",
+    "layers": 40,
+    "activation_width": 2048,
+    "tokenizer_files": [
+      "chat_template.jinja",
+      "config.json",
+      "merges.txt",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "vocab.json"
+    ]
+  },
+  "qwen38-flash-next": {
+    "repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+    "revision": "f5d175de2cf7f720d45d6064019a81fcf056e986",
+    "files": [
+      {
+        "path": "UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00004.gguf",
+        "sha256": "93ff23a08e5cd7501f24fa16f5b415d5807d0175e04edd3ed6a7a41b601a4eef",
+        "size": 10946618
+      },
+      {
+        "path": "UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00002-of-00004.gguf",
+        "sha256": "13d5dc8b93d039e4cfade5a9af7037f10c97f7ec4e53f75bd2e9ae34aae54aeb",
+        "size": 49604491008
+      },
+      {
+        "path": "UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00003-of-00004.gguf",
+        "sha256": "f6b9b5934908a2043732269dd740155d0f921d0763a1dcdd3452246311651f87",
+        "size": 15256783680
+      },
+      {
+        "path": "UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00004-of-00004.gguf",
+        "sha256": "5de8b5dbf89409acc39468decafd4a4a95b13c29d88a14b0356107897829ec36",
+        "size": 28800138432
+      }
+    ],
+    "tokenizer_repo": "Qwen/Qwen3.8-Flash-Next",
+    "tokenizer_revision": "812d96e10a0dd82b69d749e68693698cf6c36daa",
+    "layers": 48,
+    "activation_width": 10240,
+    "tokenizer_files": [
+      "chat_template.jinja",
+      "config.json",
+      "merges.txt",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "vocab.json"
+    ]
+  }
+}

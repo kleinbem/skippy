@@ -1,0 +1,527 @@
+{
+  "schema_version": 1,
+  "preview": true,
+  "active_baselines": [
+    {
+      "configuration": "qwen35-4b-standalone",
+      "workload": "DGX Spark AgentX nightly v1",
+      "metric": "output_tok_s",
+      "source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "value": 30.42
+    },
+    {
+      "configuration": "qwen35-4b-standalone",
+      "workload": "DGX Spark AgentX nightly v1",
+      "metric": "ttft_p95_ms",
+      "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "value": 14335
+    },
+    {
+      "configuration": "qwen35-4b-standalone",
+      "workload": "DGX Spark smoke v1",
+      "metric": "prefill_tok_s",
+      "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "value": 612.17
+    },
+    {
+      "configuration": "qwen35-4b-standalone",
+      "workload": "DGX Spark smoke v1",
+      "metric": "decode_tok_s",
+      "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "value": 63.32
+    }
+  ],
+  "runs": [
+    {
+      "id": "nightly-seed",
+      "profile": "nightly",
+      "outcome": "passed",
+      "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "started_at": "2026-11-09T14:00:00Z",
+      "configurations": [
+        {
+          "id": "qwen35-4b-standalone",
+          "outcome": "passed",
+          "metrics": [
+            {
+              "workload": "DGX Spark AgentX nightly v1",
+              "metric": "output_tok_s",
+              "measured": 26.29,
+              "baseline_update": "seeded"
+            },
+            {
+              "workload": "DGX Spark AgentX nightly v1",
+              "metric": "ttft_p95_ms",
+              "measured": 14335,
+              "baseline_update": "seeded"
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "prefill_tok_s",
+              "measured": 612.17,
+              "baseline_update": "seeded"
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": 63.32,
+              "baseline_update": "seeded"
+            }
+          ]
+        }
+      ],
+      "published": true,
+      "note": "Illustrative scenario using sample results."
+    },
+    {
+      "id": "nightly-promotion",
+      "profile": "nightly",
+      "outcome": "passed",
+      "source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "started_at": "2026-11-19T14:00:00Z",
+      "configurations": [
+        {
+          "id": "qwen35-4b-standalone",
+          "outcome": "passed",
+          "metrics": [
+            {
+              "workload": "DGX Spark AgentX nightly v1",
+              "metric": "output_tok_s",
+              "measured": 30.42,
+              "reference": {
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "value": 26.29
+              },
+              "verdict": "improved",
+              "baseline_update": "promoted"
+            },
+            {
+              "workload": "DGX Spark AgentX nightly v1",
+              "metric": "ttft_p95_ms",
+              "measured": 14230,
+              "reference": {
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "value": 14335
+              },
+              "verdict": "passed"
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": 64.01,
+              "reference": {
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "value": 63.32
+              },
+              "verdict": "passed"
+            }
+          ]
+        }
+      ],
+      "published": true,
+      "note": "Illustrative scenario. Output throughput rose 15.71% against the saved baseline and exceeded the 5% improvement threshold. The new baseline is 30.42 tok/s.",
+      "baseline_revision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    {
+      "id": "nightly-regression",
+      "profile": "nightly",
+      "outcome": "failed",
+      "source_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "started_at": "2026-11-24T14:00:00Z",
+      "published": true,
+      "baseline_revision": "ffffffffffffffffffffffffffffffffffffffff",
+      "note": "Illustrative scenario. Correctness passed. Output throughput fell 12.20% against the saved baseline, exceeding the 5% tolerance. The saved baseline stays at 30.42 tok/s.",
+      "configurations": [
+        {
+          "id": "qwen35-4b-standalone",
+          "outcome": "passed",
+          "metrics": [
+            {
+              "workload": "DGX Spark AgentX nightly v1",
+              "metric": "output_tok_s",
+              "measured": 26.71,
+              "reference": {
+                "source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "value": 30.42
+              },
+              "verdict": "regressed"
+            },
+            {
+              "workload": "DGX Spark AgentX nightly v1",
+              "metric": "ttft_p95_ms",
+              "measured": 14531,
+              "reference": {
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "value": 14335
+              },
+              "verdict": "passed"
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": 62.95,
+              "reference": {
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "value": 63.32
+              },
+              "verdict": "passed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pr-pass",
+      "profile": "pr",
+      "outcome": "passed",
+      "source_sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "started_at": "2026-11-24T17:00:00Z",
+      "baseline_revision": "ffffffffffffffffffffffffffffffffffffffff",
+      "note": "Illustrative qualifying PR. Prefill and decode throughput both stayed within 5% of the saved baselines.",
+      "configurations": [
+        {
+          "id": "qwen35-4b-standalone",
+          "outcome": "passed",
+          "metrics": [
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "prefill_tok_s",
+              "measured": 611.12,
+              "reference": {
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "value": 612.17
+              },
+              "verdict": "passed"
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": 62.1,
+              "reference": {
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "value": 63.32
+              },
+              "verdict": "passed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pr-skipped",
+      "profile": "pr",
+      "outcome": "skipped",
+      "source_sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "started_at": "2026-11-24T18:00:00Z",
+      "note": "Spark qualification was intentionally skipped because the PR does not carry the qualify label.",
+      "configurations": []
+    },
+    {
+      "id": "main-smoke-recorded",
+      "profile": "pr",
+      "outcome": "passed",
+      "source_sha": "3f34c26a18118bd139452a8376ffe28c5d23d26a",
+      "started_at": "2026-11-21T03:57:11Z",
+      "url": "https://github.com/Mesh-LLM/skippy/actions/runs/44863668933",
+      "note": "Recorded main workflow dispatch. All seven configurations passed. Six timing receipts were available. No comparison baseline was published for this run.",
+      "configurations": [
+        {
+          "id": "qwen3-coder-30b-a3b-split",
+          "outcome": "passed",
+          "metrics": [
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "prefill_tok_s",
+              "measured": 260.23
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": 29.38
+            }
+          ],
+          "url": "https://pilot.jianyang.cloud/jobs/job_xx9qwgvp1jm5680"
+        },
+        {
+          "id": "qwen3-coder-30b-a3b-standalone",
+          "outcome": "passed",
+          "metrics": [
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "prefill_tok_s",
+              "measured": 216.07
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": 62.64
+            }
+          ],
+          "url": "https://pilot.jianyang.cloud/jobs/job_ewb6q82wjhx38pn"
+        },
+        {
+          "id": "qwen35-4b-standalone",
+          "outcome": "passed",
+          "metrics": [
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "prefill_tok_s",
+              "measured": 612.17
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": 63.32
+            }
+          ],
+          "url": "https://pilot.jianyang.cloud/jobs/job_70j3kjgwf1y934c"
+        },
+        {
+          "id": "qwen36-35b-a3b-split",
+          "outcome": "passed",
+          "metrics": [
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "prefill_tok_s",
+              "measured": null,
+              "note": "Timing receipt unavailable in GitHub Actions"
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": null,
+              "note": "Timing receipt unavailable in GitHub Actions"
+            }
+          ],
+          "url": "https://pilot.jianyang.cloud/jobs/job_fwj351fp396t44t"
+        },
+        {
+          "id": "qwen36-35b-a3b-standalone",
+          "outcome": "passed",
+          "metrics": [
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "prefill_tok_s",
+              "measured": 251.8
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": 60.44
+            }
+          ],
+          "url": "https://pilot.jianyang.cloud/jobs/job_2324qg3fnx0pgbh"
+        },
+        {
+          "id": "qwen38-flash-next-split",
+          "outcome": "passed",
+          "metrics": [
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "prefill_tok_s",
+              "measured": 40.59
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": 13.1
+            }
+          ],
+          "url": "https://pilot.jianyang.cloud/jobs/job_ssq2mwkdbamy36a"
+        },
+        {
+          "id": "qwen38-flash-next-standalone",
+          "outcome": "passed",
+          "metrics": [
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "prefill_tok_s",
+              "measured": 89.28
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": 28.88
+            }
+          ],
+          "url": "https://pilot.jianyang.cloud/jobs/job_yh8wtjtb4hkztha"
+        }
+      ]
+    },
+    {
+      "id": "nightly-stable",
+      "profile": "nightly",
+      "outcome": "passed",
+      "published": true,
+      "source_sha": "1111111111111111111111111111111111111111",
+      "started_at": "2026-11-12T14:00:00Z",
+      "configurations": [
+        {
+          "id": "qwen35-4b-standalone",
+          "outcome": "passed",
+          "metrics": [
+            {
+              "workload": "DGX Spark AgentX nightly v1",
+              "metric": "output_tok_s",
+              "measured": 26.5,
+              "reference": {
+                "value": 26.29,
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "verdict": "passed"
+            },
+            {
+              "workload": "DGX Spark AgentX nightly v1",
+              "metric": "ttft_p95_ms",
+              "measured": 14312,
+              "reference": {
+                "value": 14335,
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "verdict": "passed"
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": 63.44,
+              "reference": {
+                "value": 63.32,
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "verdict": "passed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "nightly-gap",
+      "profile": "nightly",
+      "outcome": "incomplete",
+      "published": true,
+      "source_sha": "2222222222222222222222222222222222222222",
+      "started_at": "2026-11-16T14:00:00Z",
+      "configurations": [
+        {
+          "id": "qwen35-4b-standalone",
+          "outcome": "incomplete",
+          "metrics": [
+            {
+              "workload": "DGX Spark AgentX nightly v1",
+              "metric": "output_tok_s",
+              "measured": null,
+              "reference": {
+                "value": 26.29,
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "note": "Timing receipt unavailable"
+            },
+            {
+              "workload": "DGX Spark AgentX nightly v1",
+              "metric": "ttft_p95_ms",
+              "measured": null,
+              "reference": {
+                "value": 14335,
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "note": "Timing receipt unavailable"
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": null,
+              "reference": {
+                "value": 63.32,
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "note": "Timing receipt unavailable"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "nightly-steady",
+      "profile": "nightly",
+      "outcome": "passed",
+      "published": true,
+      "source_sha": "3333333333333333333333333333333333333333",
+      "started_at": "2026-11-21T14:00:00Z",
+      "configurations": [
+        {
+          "id": "qwen35-4b-standalone",
+          "outcome": "passed",
+          "metrics": [
+            {
+              "workload": "DGX Spark AgentX nightly v1",
+              "metric": "output_tok_s",
+              "measured": 30.14,
+              "reference": {
+                "value": 30.42,
+                "source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "verdict": "passed"
+            },
+            {
+              "workload": "DGX Spark AgentX nightly v1",
+              "metric": "ttft_p95_ms",
+              "measured": 14270,
+              "reference": {
+                "value": 14335,
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "verdict": "passed"
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": 63.82,
+              "reference": {
+                "value": 63.32,
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "verdict": "passed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pr-regression",
+      "profile": "pr",
+      "outcome": "failed",
+      "source_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee1",
+      "started_at": "2026-11-24T17:30:00Z",
+      "baseline_revision": "ffffffffffffffffffffffffffffffffffffffff",
+      "note": "Illustrative qualifying PR. Decode throughput fell 5.09% against the saved baseline, exceeding the 5% tolerance.",
+      "configurations": [
+        {
+          "id": "qwen35-4b-standalone",
+          "outcome": "passed",
+          "metrics": [
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "prefill_tok_s",
+              "measured": 611.12,
+              "reference": {
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "value": 612.17
+              },
+              "verdict": "passed"
+            },
+            {
+              "workload": "DGX Spark smoke v1",
+              "metric": "decode_tok_s",
+              "measured": 60.1,
+              "reference": {
+                "source_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "value": 63.32
+              },
+              "verdict": "regressed"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

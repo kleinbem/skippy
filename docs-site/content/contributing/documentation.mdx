@@ -1,0 +1,67 @@
+---
+title: Documentation contributions
+description: Keep public Skippy guidance correct, searchable, and standalone.
+---
+
+# Documentation contributions
+
+The public documentation explains how engineers install, operate, configure,
+and contribute to standalone Skippy. It should help a reader choose a feature,
+complete a working task, understand the behavior, and find exact controls.
+
+Public pages live under `docs-site/content`. Internal designs, experiments,
+qualification ledgers, and extraction history stay under their existing
+repository paths and are not automatically published.
+
+## Edit a page
+
+Structure task pages in this order:
+
+1. Introduce what the feature is.
+2. Explain when and how it is used.
+3. Describe technical behavior, invariants, and failure modes.
+4. End with the relevant commands, settings, or API reference.
+
+Keep the first working example close to the top. Link to deeper concepts only
+after the reader can identify the task they are trying to complete.
+
+## Content rules
+
+- Describe standalone Skippy commands and configuration only.
+- Treat the CLI source, serving-settings catalog, package-format crate, and
+  current architecture documents as factual authorities.
+- Use old MeshLLM documentation only as editorial source material.
+- Do not publish secrets, private model coordinates, or unsupported hardware
+  claims.
+- Keep examples copyable and state when values are illustrative.
+
+## Build locally
+
+```console
+just docs-install
+just docs-dev
+just docs-build
+```
+
+The production build statically exports every page, then Pagefind indexes the
+HTML. Check the generated search index, internal links, desktop navigation, and
+the mobile sidebar before opening a pull request.
+
+## How the docs site works
+
+Nextra renders the MDX content and navigation. The production export supplies
+static HTML to Cloudflare Workers, and Pagefind builds client-side search from
+that output. Page titles and descriptions also supply the page metadata used by
+browsers and search results.
+
+## Documentation review reference
+
+| Check | Expectation |
+| --- | --- |
+| Accuracy | Commands and settings match current canonical sources |
+| Structure | Concept, use, technical detail, then reference |
+| Examples | Copyable, scoped, and clear about illustrative values |
+| Search | Terms engineers use appear in headings and prose |
+| Links | Internal links resolve in the production export |
+| Scope | Public standalone Skippy behavior only |
+| Verification | `just docs-build` exits successfully |
